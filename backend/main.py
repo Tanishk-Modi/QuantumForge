@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -79,3 +79,12 @@ def create_experiment(experiment: ExperimentCreate, db: Session = Depends(get_db
 def get_experiments(db: Session = Depends(get_db)):
     # SELECT * FROM EXPERIMENTS
     return db.query(Experiment).all()
+
+@app.delete("/api/experiments/{experiment_id}")
+def delete_experiment(experiment_id: int, db: Session = Depends(get_db)):
+    db_experiment = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if not db_experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    db.delete(db_experiment)
+    db.commit()
+    return {"ok": True}

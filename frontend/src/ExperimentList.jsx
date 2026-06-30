@@ -25,11 +25,22 @@ function ExperimentList() {
         fetchExperiments()
     }, [])
 
+    async function handleDelete(id) {
+        try {
+            await apiClient.delete(`/api/experiments/${id}`)
+            fetchExperiments()
+        } catch (error) {
+            console.error(error)
+            setError("Failed to delete experiment.")
+        }
+    }
+
     return(
         <>
             {experiments.map((exp) => (
                 <div key={exp.id}>
                     {exp.name}
+                    <button onClick={() => handleDelete(exp.id)}>Delete</button>
                 </div>
             ))}
         </>
