@@ -1,7 +1,7 @@
 import { useState } from "react"
 import apiClient from "./api/client"
 
-function CreateExperiment() {
+function CreateExperiment({ onSuccess }) {
 
     const [formData, setFormData] = useState({
         name: "",
@@ -44,6 +44,7 @@ function CreateExperiment() {
             const response = await apiClient.post("/api/experiments", payload)
             console.log(response.data)
             setSuccess(true)
+            onSuccess()
 
         } catch (err) {
             console.error(err)
@@ -54,45 +55,48 @@ function CreateExperiment() {
     }
 
     return (
-        <div>
-            <h2>New Experiment</h2>
+        <div className="border rounded-lg p-6 mb-8">
+            <h2 className="text-xl font-semibold mb-4">New Experiment</h2>
 
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
 
-                <div>
-                    <label>Experiment Name</label>
+                <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium">Experiment Name</label>
                     <input
                         type="text"
                         name="name"
                         value={formData.name}
                         onChange={handleChange}
                         placeholder="e.g. High Vol Run 1"
+                        className="border rounded px-3 py-2"
                     />
                 </div>
 
-                <div>
-                    <label>Algorithm</label>
+                <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium">Algorithm</label>
                     <input
                         type="text"
                         name="algorithm"
                         value={formData.algorithm}
                         readOnly
+                        className="border rounded px-3 py-2 bg-gray-100 text-gray-500 cursor-not-allowed"
                     />
                 </div>
 
-                <div>
-                    <label>Stock Price ($)</label>
+                <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium">Stock Price ($)</label>
                     <input
                         type="number"
                         name="stock_price"
                         value={formData.stock_price}
                         onChange={handleChange}
                         placeholder="e.g. 100"
+                        className="border rounded px-3 py-2"
                     />
                 </div>
 
-                <div>
-                    <label>Volatility (0 - 1)</label>
+                <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium">Volatility (0 – 1)</label>
                     <input
                         type="number"
                         name="volatility"
@@ -102,26 +106,29 @@ function CreateExperiment() {
                         step="0.01"
                         min="0"
                         max="1"
+                        className="border rounded px-3 py-2"
                     />
                 </div>
 
-                <div>
-                    <label>Strike Price ($)</label>
+                <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium">Strike Price ($)</label>
                     <input
                         type="number"
                         name="strike_price"
                         value={formData.strike_price}
                         onChange={handleChange}
                         placeholder="e.g. 105"
+                        className="border rounded px-3 py-2"
                     />
                 </div>
 
-                <div>
-                    <label>Number of Shots</label>
+                <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium">Number of Shots</label>
                     <select
                         name="n_shots"
                         value={formData.n_shots}
                         onChange={handleChange}
+                        className="border rounded px-3 py-2"
                     >
                         <option value="">Select shots</option>
                         <option value="512">512</option>
@@ -131,22 +138,27 @@ function CreateExperiment() {
                     </select>
                 </div>
 
-                <div>
-                    <label>Simulator</label>
+                <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium">Simulator</label>
                     <select
                         name="simulator"
                         value={formData.simulator}
                         onChange={handleChange}
+                        className="border rounded px-3 py-2"
                     >
                         <option value="aer_simulator">Aer Simulator</option>
                         <option value="statevector_simulator">Statevector Simulator</option>
                     </select>
                 </div>
 
-                {error && <p>{error}</p>}
-                {success && <p>Experiment created successfully.</p>}
+                {error && <p className="text-sm text-red-500">{error}</p>}
+                {success && <p className="text-sm text-green-600">Experiment created successfully.</p>}
 
-                <button type="submit" disabled={isLoading}>
+                <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="mt-2 self-start px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
                     {isLoading ? "Running..." : "Run Experiment"}
                 </button>
 
