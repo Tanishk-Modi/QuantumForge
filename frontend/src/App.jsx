@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import CreateExperiment from './CreateExperiment'
+import ExperimentList from './ExperimentList'
 
 function App() {
 
@@ -7,6 +8,7 @@ function App() {
     <>
       <h1>QForge</h1>  
       <CreateExperiment></CreateExperiment>
+      <ExperimentList></ExperimentList>
     </>
   )
 }
