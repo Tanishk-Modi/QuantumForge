@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from database import Base, engine
 
 app = FastAPI()
+Base.metadata.create_all(bind=engine)
 
 # Configure CORS to allow your React development server
 origins = [
