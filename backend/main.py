@@ -31,12 +31,16 @@ class QMCParameters(BaseModel):
     strike_price: float
     n_shots: int
     simulator: str
+    risk_free_rate: float
+    time_to_expiry: float
+    num_uncertainty_qubits: int
 
 # What the user provides
 class ExperimentCreate(BaseModel):
     name: str
     algorithm: str
-    parameters: QMCParameters
+    # dict allows any arbitrary experiment params
+    parameters: dict
 
 # What the server creates
 class ExperimentResponse(BaseModel):
@@ -66,7 +70,7 @@ def create_experiment(experiment: ExperimentCreate, db: Session = Depends(get_db
     db_experiment = Experiment(
         name=experiment.name,
         algorithm=experiment.algorithm,
-        parameters=experiment.parameters.model_dump_json(),
+        parameters=json.dumps(experiment.parameters)
     )
     db.add(db_experiment) # stage
     db.commit() # write to disk
