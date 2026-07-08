@@ -1,7 +1,7 @@
 import apiClient from "./api/client"
 
 // destructuring the props
-function ExperimentList({ experiments, isLoading, error, onDelete }) {
+function ExperimentList({ experiments, selectedExperiment, isLoading, error, onDelete, onSelect }) {
 
     async function handleDelete(id) {
         try {
@@ -22,7 +22,15 @@ function ExperimentList({ experiments, isLoading, error, onDelete }) {
             <h2 className="text-xl font-semibold mb-3">Experiments</h2>
             <div className="flex flex-col gap-2">
                 {experiments.map((exp) => (
-                    <div key={exp.id} className="flex justify-between items-center p-4 border rounded-lg">
+                    <div
+                        key={exp.id}
+                        onClick={() => onSelect(exp)}
+                        className={`flex justify-between items-center p-4 border rounded-lg cursor-pointer transition-colors ${
+                            selectedExperiment?.id === exp.id
+                                ? 'border-blue-500 bg-blue-50'
+                                : 'hover:bg-gray-50'
+                        }`}
+                    >
                         <div>
                             <p className="font-medium">{exp.name}</p>
                             <p className="text-sm text-gray-500">

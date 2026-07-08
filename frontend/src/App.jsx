@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react'
 import apiClient from './api/client'
 import CreateExperiment from './CreateExperiment'
 import ExperimentList from './ExperimentList'
+import ExperimentDetail from './ExperimentDetail'
 
 function App() {
 
   const [experiments, setExperiments] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [selectedExperiment, setSelectedExperiment] = useState(null)
 
   async function fetchExperiments() {
     setIsLoading(true)
@@ -32,10 +34,18 @@ function App() {
       <CreateExperiment onSuccess={fetchExperiments} />
       <ExperimentList
         experiments={experiments}
+        selectedExperiment={selectedExperiment}
+        onSelect={setSelectedExperiment}
         isLoading={isLoading}
         error={error}
         onDelete={fetchExperiments}
       />
+      {selectedExperiment && (
+        <ExperimentDetail
+          experiment={selectedExperiment}
+          onClose={() => setSelectedExperiment(null)}
+        />
+      )}
     </div>
   )
 }
