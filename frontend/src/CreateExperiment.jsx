@@ -64,7 +64,7 @@ function CreateExperiment({ onSuccess }) {
         <div className="border rounded-lg p-6 mb-8">
             <h2 className="text-xl font-semibold mb-4">New Experiment</h2>
 
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4" autoComplete="off">
 
                 <div className="flex flex-col gap-1">
                     <label className="text-sm font-medium">Experiment Name</label>
