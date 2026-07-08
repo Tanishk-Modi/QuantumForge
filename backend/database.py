@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 DATABASE_URL = "sqlite:///./qforge.db"
@@ -22,7 +22,7 @@ class Experiment(Base):
     status: Mapped[str] = mapped_column(default="queued")
 
     parameters: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     # qiskit finance stuff
     black_scholes_price:  Mapped[Optional[float]]

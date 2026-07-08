@@ -5,12 +5,15 @@ function CreateExperiment({ onSuccess }) {
 
     const [formData, setFormData] = useState({
         name: "",
-        algorithm: "QMC",
+        algorithm: "QMC_European",
         stock_price: "",
         volatility: "",
         strike_price: "",
         n_shots: "",
-        simulator: "aer_simulator"
+        simulator: "aer_simulator",
+        risk_free_rate: "0.05",
+        time_to_expiry: "1.0",
+        num_uncertainty_qubits: "3"
     })
 
     const [isLoading, setIsLoading] = useState(false)
@@ -33,11 +36,14 @@ function CreateExperiment({ onSuccess }) {
                 name: formData.name,
                 algorithm: formData.algorithm,
                 parameters: {
-                    stock_price: parseFloat(formData.stock_price),
-                    volatility: parseFloat(formData.volatility),
-                    strike_price: parseFloat(formData.strike_price),
-                    n_shots: parseInt(formData.n_shots),
-                    simulator: formData.simulator
+                    stock_price:             parseFloat(formData.stock_price),
+                    volatility:              parseFloat(formData.volatility),
+                    strike_price:            parseFloat(formData.strike_price),
+                    n_shots:                 parseInt(formData.n_shots),
+                    simulator:               formData.simulator,
+                    risk_free_rate:          parseFloat(formData.risk_free_rate),
+                    time_to_expiry:          parseFloat(formData.time_to_expiry),
+                    num_uncertainty_qubits:  parseInt(formData.num_uncertainty_qubits)
                 }
             }
 
@@ -120,6 +126,48 @@ function CreateExperiment({ onSuccess }) {
                         placeholder="e.g. 105"
                         className="border rounded px-3 py-2"
                     />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium">Risk-Free Rate (annual)</label>
+                    <input
+                        type="number"
+                        name="risk_free_rate"
+                        value={formData.risk_free_rate}
+                        onChange={handleChange}
+                        placeholder="e.g. 0.05"
+                        step="0.01"
+                        min="0"
+                        className="border rounded px-3 py-2"
+                    />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium">Time to Expiry (years)</label>
+                    <input
+                        type="number"
+                        name="time_to_expiry"
+                        value={formData.time_to_expiry}
+                        onChange={handleChange}
+                        placeholder="e.g. 1.0"
+                        step="0.25"
+                        min="0"
+                        className="border rounded px-3 py-2"
+                    />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                    <label className="text-sm font-medium">Uncertainty Qubits</label>
+                    <select
+                        name="num_uncertainty_qubits"
+                        value={formData.num_uncertainty_qubits}
+                        onChange={handleChange}
+                        className="border rounded px-3 py-2"
+                    >
+                        <option value="3">3 — fast, lower precision</option>
+                        <option value="4">4</option>
+                        <option value="5">5 — slower, higher precision</option>
+                    </select>
                 </div>
 
                 <div className="flex flex-col gap-1">

@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from database import Base, engine, get_db, Experiment
+from quantum.registry import get_runner
+from typing import Optional
 
 app = FastAPI()
 Base.metadata.create_all(bind=engine)
@@ -44,7 +46,6 @@ class ExperimentCreate(BaseModel):
 
 # What the server creates
 class ExperimentResponse(BaseModel):
-    # read from ORM
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -54,9 +55,22 @@ class ExperimentResponse(BaseModel):
     status: str
     created_at: datetime
 
+    black_scholes_price: Optional[float] = None
+    classical_mc_result: Optional[dict]  = None
+    quantum_mc_result:   Optional[dict]  = None
+    error_classical:     Optional[float] = None
+    error_quantum:       Optional[float] = None
+
     @field_validator("parameters", mode="before")
     @classmethod
     def parse_parameters(cls, v):
+        if isinstance(v, str):
+            return json.loads(v)
+        return v
+
+    @field_validator("classical_mc_result", "quantum_mc_result", mode="before")
+    @classmethod
+    def parse_result_json(cls, v):
         if isinstance(v, str):
             return json.loads(v)
         return v
@@ -75,6 +89,28 @@ def create_experiment(experiment: ExperimentCreate, db: Session = Depends(get_db
     db.add(db_experiment) # stage
     db.commit() # write to disk
     db.refresh(db_experiment) #re-read from db
+
+    db_experiment.status = "running"
+    db.commit() # persists status
+
+    # "queued" -> "running" -> "completed"
+    #                       -> "failed"
+
+    try:
+        runner = get_runner(experiment.algorithm)
+        results = runner(experiment.parameters)
+        db_experiment.black_scholes_price = results["black_scholes_price"]
+        db_experiment.classical_mc_result = results["classical_mc_result"]
+        db_experiment.quantum_mc_result   = results["quantum_mc_result"]
+        db_experiment.error_classical     = results["error_classical"]
+        db_experiment.error_quantum       = results["error_quantum"]
+        db_experiment.status = "completed"
+    except Exception as e:
+        print(f"Experiment {db_experiment.id} failed: {e}")
+        db_experiment.status = "failed"
+    
+    db.commit() # persists results
+    db.refresh(db_experiment)
     return db_experiment
 
 # GET Route for getting all experiments
