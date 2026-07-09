@@ -1,53 +1,59 @@
-import apiClient from "./api/client"
+import { useNavigate } from 'react-router-dom'
+import apiClient from './api/client'
 
-// destructuring the props
-function ExperimentList({ experiments, selectedExperiment, isLoading, error, onDelete, onSelect }) {
+function ExperimentList({ experiments, isLoading, error, onDelete }) {
+  const navigate = useNavigate()
 
-    async function handleDelete(id) {
-        try {
-            await apiClient.delete(`/api/experiments/${id}`)
-            onDelete()
-        } catch (error) {
-            console.error(error)
-        }
+  async function handleDelete(event, id) {
+    event.stopPropagation()
+
+    try {
+      await apiClient.delete(`/api/experiments/${id}`)
+      onDelete()
+    } catch (deleteError) {
+      console.error(deleteError)
     }
+  }
 
-    // edge cases
-    if (isLoading) return <p className="text-gray-500 mt-4">Loading experiments...</p>
-    if (error) return <p className="text-red-500 mt-4">{error}</p>
-    if (experiments.length === 0) return <p className="text-gray-400 mt-4">No experiments yet.</p>
+  if (isLoading) {
+    return <p className="mt-4 text-gray-500">Loading experiments...</p>
+  }
 
-    return (
-        <div>
-            <h2 className="text-xl font-semibold mb-3">Experiments</h2>
-            <div className="flex flex-col gap-2">
-                {experiments.map((exp) => (
-                    <div
-                        key={exp.id}
-                        onClick={() => onSelect(exp)}
-                        className={`flex justify-between items-center p-4 border rounded-lg cursor-pointer transition-colors ${
-                            selectedExperiment?.id === exp.id
-                                ? 'border-blue-500 bg-blue-50'
-                                : 'hover:bg-gray-50'
-                        }`}
-                    >
-                        <div>
-                            <p className="font-medium">{exp.name}</p>
-                            <p className="text-sm text-gray-500">
-                                {exp.algorithm} · {exp.status} · {new Date(exp.created_at).toLocaleString()}
-                            </p>
-                        </div>
-                        <button
-                            onClick={() => handleDelete(exp.id)}
-                            className="text-sm text-red-500 hover:text-red-700"
-                        >
-                            Delete
-                        </button>
-                    </div>
-                ))}
-            </div>
-        </div>
-    )
+  if (error) {
+    return <p className="mt-4 text-red-500">{error}</p>
+  }
+
+  if (experiments.length === 0) {
+    return <p className="mt-4 text-gray-400">No experiments yet.</p>
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {experiments.map((experiment) => (
+        <button
+          key={experiment.id}
+          type="button"
+          onClick={() => navigate(`/experiments/${experiment.id}`)}
+          className="flex items-center justify-between rounded-lg border p-4 text-left transition-colors hover:bg-gray-50"
+        >
+          <div>
+            <p className="font-medium">{experiment.name}</p>
+            <p className="text-sm text-gray-500">
+              {experiment.algorithm} · {experiment.status} ·{' '}
+              {new Date(experiment.created_at).toLocaleString()}
+            </p>
+          </div>
+
+          <span
+            onClick={(event) => handleDelete(event, experiment.id)}
+            className="text-sm text-red-500 hover:text-red-700"
+          >
+            Delete
+          </span>
+        </button>
+      ))}
+    </div>
+  )
 }
 
 export default ExperimentList

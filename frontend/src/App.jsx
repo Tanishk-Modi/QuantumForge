@@ -1,51 +1,50 @@
-import { useState, useEffect } from 'react'
-import apiClient from './api/client'
-import CreateExperiment from './CreateExperiment'
-import ExperimentList from './ExperimentList'
-import ExperimentDetail from './ExperimentDetail'
+import { NavLink, Route, Routes } from 'react-router-dom'
+import DashboardPage from './pages/DashboardPage'
+import NewExperimentPage from './pages/NewExperimentPage'
+import ExperimentDetailPage from './pages/ExperimentDetailPage'
+import ComparePage from './pages/ComparePage'
 
 function App() {
-
-  const [experiments, setExperiments] = useState([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [selectedExperiment, setSelectedExperiment] = useState(null)
-
-  async function fetchExperiments() {
-    setIsLoading(true)
-    try {
-      const response = await apiClient.get("/api/experiments")
-      setExperiments(response.data)
-    } catch (err) {
-      console.error(err)
-      setError("Failed to fetch experiments.")
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchExperiments()
-  }, [])
+  const navClassName = ({ isActive }) =>
+    `rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+      isActive
+        ? 'bg-blue-600 text-white'
+        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+    }`
 
   return (
-    <div className="max-w-3xl mx-auto p-8">
-      <h1 className="text-3xl font-bold mb-8">QForge</h1>
-      <CreateExperiment onSuccess={fetchExperiments} />
-      <ExperimentList
-        experiments={experiments}
-        selectedExperiment={selectedExperiment}
-        onSelect={setSelectedExperiment}
-        isLoading={isLoading}
-        error={error}
-        onDelete={fetchExperiments}
-      />
-      {selectedExperiment && (
-        <ExperimentDetail
-          experiment={selectedExperiment}
-          onClose={() => setSelectedExperiment(null)}
-        />
-      )}
+    <div className="min-h-screen bg-gray-50 text-gray-900">
+      <header className="border-b bg-white">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+          <div>
+            <h1 className="text-2xl font-bold">QForge</h1>
+            <p className="text-sm text-gray-500">
+              Quantum experiment workbench
+            </p>
+          </div>
+
+          <nav className="flex items-center gap-2">
+            <NavLink to="/" end className={navClassName}>
+              Dashboard
+            </NavLink>
+            <NavLink to="/experiments/new" className={navClassName}>
+              New Experiment
+            </NavLink>
+            <NavLink to="/compare" className={navClassName}>
+              Compare
+            </NavLink>
+          </nav>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl px-6 py-8">
+        <Routes>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/experiments/new" element={<NewExperimentPage />} />
+          <Route path="/experiments/:id" element={<ExperimentDetailPage />} />
+          <Route path="/compare" element={<ComparePage />} />
+        </Routes>
+      </main>
     </div>
   )
 }

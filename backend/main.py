@@ -120,6 +120,16 @@ def get_experiments(db: Session = Depends(get_db)):
     # SELECT * FROM EXPERIMENTS
     return db.query(Experiment).all()
 
+# GET Route for getting a single experiment by id
+@app.get("/api/experiments/{experiment_id}", response_model=ExperimentResponse)
+def get_experiment(experiment_id: int, db: Session = Depends(get_db)):
+    db_experiment = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if not db_experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    return db_experiment
+
+# DELETE Route for deleting an experiment by id
+
 @app.delete("/api/experiments/{experiment_id}")
 def delete_experiment(experiment_id: int, db: Session = Depends(get_db)):
     db_experiment = db.query(Experiment).filter(Experiment.id == experiment_id).first()
