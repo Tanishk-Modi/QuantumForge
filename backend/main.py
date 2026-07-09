@@ -1,19 +1,21 @@
 import json
 from datetime import datetime
-from fastapi import FastAPI, Depends, HTTPException
+from typing import Optional
+
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
 from pydantic import BaseModel, ConfigDict, field_validator
+from sqlalchemy.orm import Session
 
 from database import Base, engine, get_db, Experiment
 from quantum.registry import get_runner
-from typing import Optional
+
 
 app = FastAPI()
 Base.metadata.create_all(bind=engine)
 
 origins = [
-    "http://localhost:5173",  # Default Vite port
+    "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
 
@@ -21,9 +23,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all HTTP methods (GET, POST, PUT, DELETE, etc.)
-    allow_headers=["*"],  # Allows all request headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+
 
 # -- Pydantic Schemas -- #
 
@@ -37,14 +40,13 @@ class QMCParameters(BaseModel):
     time_to_expiry: float
     num_uncertainty_qubits: int
 
-# What the user provides
+
 class ExperimentCreate(BaseModel):
     name: str
     algorithm: str
-    # dict allows any arbitrary experiment params
     parameters: dict
 
-# What the server creates
+
 class ExperimentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -56,85 +58,175 @@ class ExperimentResponse(BaseModel):
     created_at: datetime
 
     black_scholes_price: Optional[float] = None
-    classical_mc_result: Optional[dict]  = None
-    quantum_mc_result:   Optional[dict]  = None
-    error_classical:     Optional[float] = None
-    error_quantum:       Optional[float] = None
+    classical_mc_result: Optional[dict] = None
+    quantum_mc_result: Optional[dict] = None
+    error_classical: Optional[float] = None
+    error_quantum: Optional[float] = None
 
     @field_validator("parameters", mode="before")
     @classmethod
-    def parse_parameters(cls, v):
-        if isinstance(v, str):
-            return json.loads(v)
-        return v
+    def parse_parameters(cls, value):
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
 
     @field_validator("classical_mc_result", "quantum_mc_result", mode="before")
     @classmethod
-    def parse_result_json(cls, v):
-        if isinstance(v, str):
-            return json.loads(v)
-        return v
+    def parse_result_json(cls, value):
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
 
 
-# POST Route for creating new experiment
+# -- Helper Functions -- #
+
+def parse_compare_ids(ids: str) -> list[int]:
+    raw_parts = [part.strip() for part in ids.split(",") if part.strip()]
+
+    if len(raw_parts) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide at least 2 experiment IDs to compare.",
+        )
+
+    if len(raw_parts) > 5:
+        raise HTTPException(
+            status_code=400,
+            detail="You can compare at most 5 experiments at once.",
+        )
+
+    try:
+        parsed_ids = [int(part) for part in raw_parts]
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Experiment IDs must be integers.",
+        )
+
+    if len(set(parsed_ids)) != len(parsed_ids):
+        raise HTTPException(
+            status_code=400,
+            detail="Duplicate experiment IDs are not allowed.",
+        )
+
+    return parsed_ids
+
+
+def validate_compare_experiments(experiments: list[Experiment], requested_ids: list[int]) -> None:
+    found_ids = {experiment.id for experiment in experiments}
+    missing_ids = [experiment_id for experiment_id in requested_ids if experiment_id not in found_ids]
+
+    if missing_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Experiment(s) not found: {missing_ids}",
+        )
+
+    incomplete_ids = [
+        experiment.id for experiment in experiments if experiment.status != "completed"
+    ]
+    if incomplete_ids:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only completed experiments can be compared. Incomplete experiment IDs: {incomplete_ids}",
+        )
+
+    algorithms = {experiment.algorithm for experiment in experiments}
+    if len(algorithms) > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="All compared experiments must use the same algorithm.",
+        )
+
+
+# -- Routes -- #
 
 @app.post("/api/experiments", response_model=ExperimentResponse)
 def create_experiment(experiment: ExperimentCreate, db: Session = Depends(get_db)):
-    # build orm object
     db_experiment = Experiment(
         name=experiment.name,
         algorithm=experiment.algorithm,
-        parameters=json.dumps(experiment.parameters)
+        parameters=json.dumps(experiment.parameters),
     )
-    db.add(db_experiment) # stage
-    db.commit() # write to disk
-    db.refresh(db_experiment) #re-read from db
+
+    db.add(db_experiment)
+    db.commit()
+    db.refresh(db_experiment)
 
     db_experiment.status = "running"
-    db.commit() # persists status
-
-    # "queued" -> "running" -> "completed"
-    #                       -> "failed"
+    db.commit()
 
     try:
         runner = get_runner(experiment.algorithm)
         results = runner(experiment.parameters)
+
         db_experiment.black_scholes_price = results["black_scholes_price"]
         db_experiment.classical_mc_result = results["classical_mc_result"]
-        db_experiment.quantum_mc_result   = results["quantum_mc_result"]
-        db_experiment.error_classical     = results["error_classical"]
-        db_experiment.error_quantum       = results["error_quantum"]
+        db_experiment.quantum_mc_result = results["quantum_mc_result"]
+        db_experiment.error_classical = results["error_classical"]
+        db_experiment.error_quantum = results["error_quantum"]
         db_experiment.status = "completed"
-    except Exception as e:
-        print(f"Experiment {db_experiment.id} failed: {e}")
+    except Exception as error:
+        print(f"Experiment {db_experiment.id} failed: {error}")
         db_experiment.status = "failed"
-    
-    db.commit() # persists results
+
+    db.commit()
     db.refresh(db_experiment)
     return db_experiment
 
-# GET Route for getting all experiments
 
 @app.get("/api/experiments", response_model=list[ExperimentResponse])
 def get_experiments(db: Session = Depends(get_db)):
-    # SELECT * FROM EXPERIMENTS
-    return db.query(Experiment).all()
+    return db.query(Experiment).order_by(Experiment.created_at.desc()).all()
 
-# GET Route for getting a single experiment by id
+
+@app.get("/api/experiments/compare", response_model=list[ExperimentResponse])
+def compare_experiments(
+    ids: str = Query(..., description="Comma-separated experiment IDs, e.g. 1,2,3"),
+    db: Session = Depends(get_db),
+):
+    parsed_ids = parse_compare_ids(ids)
+
+    experiments = (
+        db.query(Experiment)
+        .filter(Experiment.id.in_(parsed_ids))
+        .all()
+    )
+
+    validate_compare_experiments(experiments, parsed_ids)
+
+    experiments_by_id = {experiment.id: experiment for experiment in experiments}
+    ordered_experiments = [experiments_by_id[experiment_id] for experiment_id in parsed_ids]
+
+    return ordered_experiments
+
+
 @app.get("/api/experiments/{experiment_id}", response_model=ExperimentResponse)
 def get_experiment(experiment_id: int, db: Session = Depends(get_db)):
-    db_experiment = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    db_experiment = (
+        db.query(Experiment)
+        .filter(Experiment.id == experiment_id)
+        .first()
+    )
+
     if not db_experiment:
         raise HTTPException(status_code=404, detail="Experiment not found")
+
     return db_experiment
 
-# DELETE Route for deleting an experiment by id
 
 @app.delete("/api/experiments/{experiment_id}")
 def delete_experiment(experiment_id: int, db: Session = Depends(get_db)):
-    db_experiment = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    db_experiment = (
+        db.query(Experiment)
+        .filter(Experiment.id == experiment_id)
+        .first()
+    )
+
     if not db_experiment:
         raise HTTPException(status_code=404, detail="Experiment not found")
+
     db.delete(db_experiment)
     db.commit()
+
     return {"ok": True}
