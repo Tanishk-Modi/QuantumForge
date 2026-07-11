@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Literal
 
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,7 +35,7 @@ class QMCParameters(BaseModel):
     volatility: float
     strike_price: float
     n_shots: int
-    simulator: str
+    simulator: Literal["aer_simulator", "statevector_simulator"] = "statevector_simulator"
     risk_free_rate: float
     time_to_expiry: float
     num_uncertainty_qubits: int
