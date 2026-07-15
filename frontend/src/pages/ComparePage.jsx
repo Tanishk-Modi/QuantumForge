@@ -97,12 +97,23 @@ function ComparePage() {
     setCompareError(null)
   }
 
-  const priceChartData = comparedExperiments.map((experiment) => ({
-    name: experiment.name,
-    blackScholes: experiment.black_scholes_price,
-    classical: experiment.classical_mc_result?.price ?? null,
-    quantum: experiment.quantum_mc_result?.price ?? null,
-  }))
+  const algorithms = [...new Set(comparedExperiments.map((exp) => exp.algorithm))]
+  const comparisonAlgorithm = algorithms[0] || null
+  const showAnalyticalBaseline = comparisonAlgorithm === 'QMC_European'
+
+  const priceChartData = comparedExperiments.map((experiment) => {
+    const row = {
+      name: experiment.name,
+      classical: experiment.classical_mc_result?.price ?? null,
+      quantum: experiment.quantum_mc_result?.price ?? null,
+    }
+
+    if (showAnalyticalBaseline) {
+      row.blackScholes = experiment.black_scholes_price
+    }
+
+    return row
+  })
 
   const errorChartData = comparedExperiments.map((experiment) => ({
     name: experiment.name,
@@ -112,8 +123,34 @@ function ComparePage() {
     quantumError: experiment.error_quantum ? experiment.error_quantum * 100 : 0,
   }))
 
-  const algorithms = [...new Set(comparedExperiments.map((exp) => exp.algorithm))]
-  const comparisonAlgorithm = algorithms[0] || null
+  function getExperimentSummary(experiment) {
+    const params = experiment.parameters
+
+    if (experiment.algorithm === 'QMC_Basket') {
+      return [
+        `Assets: ${params.spot_price_1}, ${params.spot_price_2}`,
+        `Vols: ${params.volatility_1}, ${params.volatility_2}`,
+        `Strike: ${params.strike_price}`,
+        `Shots: ${params.n_shots}`,
+      ]
+    }
+
+    if (experiment.algorithm === 'QMC_Asian') {
+      return [
+        `Spot: ${params.spot_price}`,
+        `Volatility: ${params.volatility}`,
+        `Monitoring: ${params.monitoring_dates}`,
+        `Shots: ${params.n_shots}`,
+      ]
+    }
+
+    return [
+      `Stock: ${params.stock_price}`,
+      `Volatility: ${params.volatility}`,
+      `Strike: ${params.strike_price}`,
+      `Shots: ${params.n_shots}`,
+    ]
+  }
 
   return (
     <div className="space-y-8">
@@ -174,18 +211,9 @@ function ComparePage() {
                       </p>
 
                       <div className="mt-2 grid gap-2 text-sm text-gray-600 md:grid-cols-4">
-                        <p>
-                          Volatility: {experiment.parameters.volatility}
-                        </p>
-                        <p>
-                          Strike: {experiment.parameters.strike_price}
-                        </p>
-                        <p>
-                          Shots: {experiment.parameters.n_shots}
-                        </p>
-                        <p>
-                          Simulator: {experiment.parameters.simulator}
-                        </p>
+                        {getExperimentSummary(experiment).map((summary, index) => (
+                          <p key={index}>{summary}</p>
+                        ))}
                       </div>
                     </div>
                   </label>
@@ -249,8 +277,9 @@ function ComparePage() {
             <div className="mb-5">
               <h3 className="text-xl font-semibold">Price Comparison</h3>
               <p className="text-sm text-gray-500">
-                Compare the analytical baseline against classical and quantum
-                estimates for each run.
+                {showAnalyticalBaseline
+                  ? 'Compare the analytical baseline against classical and quantum estimates for each run.'
+                  : 'Compare the classical Monte Carlo baseline against the quantum estimate for each run.'}
               </p>
             </div>
 
@@ -281,7 +310,7 @@ function ComparePage() {
                   }}
                 />
                 <Legend />
-                <Bar dataKey="blackScholes" name="Black-Scholes" fill="#6b7280" />
+                {showAnalyticalBaseline && <Bar dataKey="blackScholes" name="Black-Scholes" fill="#6b7280" />}
                 <Bar dataKey="classical" name="Classical MC" fill="#16a34a" />
                 <Bar dataKey="quantum" name="Quantum MC" fill="#2563eb" />
               </BarChart>
@@ -292,8 +321,9 @@ function ComparePage() {
             <div className="mb-5">
               <h3 className="text-xl font-semibold">Error Comparison</h3>
               <p className="text-sm text-gray-500">
-                Lower percentages mean the estimate stayed closer to the
-                Black-Scholes reference.
+                {showAnalyticalBaseline
+                  ? 'Lower percentages mean the estimate stayed closer to the Black-Scholes reference.'
+                  : 'Lower percentages mean the estimate stayed closer to the Classical MC baseline.'}
               </p>
             </div>
 

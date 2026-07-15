@@ -13,7 +13,8 @@ function ExperimentDetail({ experiment }) {
   const cmc = experiment.classical_mc_result
   const qmc = experiment.quantum_mc_result
 
-  const hasResults = experiment.status === 'completed' && bs !== null && cmc && qmc
+  const showAnalyticalBaseline = experiment.algorithm === 'QMC_European' && bs !== null
+  const hasResults = experiment.status === 'completed' && cmc && qmc
 
   let chartData = []
   let ciLow = 0
@@ -39,11 +40,16 @@ function ExperimentDetail({ experiment }) {
     estimatePercent = ((estimate - scaleMin) / scaleRange) * 100
     intervalWidth = highPercent - lowPercent
 
-    chartData = [
-      { name: 'Black-Scholes', price: bs, fill: '#6b7280' },
-      { name: 'Classical MC', price: cmc.price, fill: '#16a34a' },
-      { name: 'Quantum MC', price: qmc.price, fill: '#2563eb' },
-    ]
+    chartData = showAnalyticalBaseline
+      ? [
+          { name: 'Black-Scholes', price: bs, fill: '#6b7280' },
+          { name: 'Classical MC', price: cmc.price, fill: '#16a34a' },
+          { name: 'Quantum MC', price: qmc.price, fill: '#2563eb' },
+        ]
+      : [
+          { name: 'Classical MC', price: cmc.price, fill: '#16a34a' },
+          { name: 'Quantum MC', price: qmc.price, fill: '#2563eb' },
+        ]
   }
 
   return (
@@ -70,16 +76,18 @@ function ExperimentDetail({ experiment }) {
 
       {hasResults && (
         <div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-lg border p-4">
-              <p className="mb-1 text-xs uppercase tracking-wide text-gray-400">
-                Black-Scholes
-              </p>
-              <p className="text-2xl font-bold">${bs.toFixed(4)}</p>
-              <p className="mt-1 text-xs text-gray-400">
-                Analytical ground truth
-              </p>
-            </div>
+            <div className={`grid gap-4 ${showAnalyticalBaseline ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+            {showAnalyticalBaseline && (
+              <div className="rounded-lg border p-4">
+                <p className="mb-1 text-xs uppercase tracking-wide text-gray-400">
+                  Black-Scholes
+                </p>
+                <p className="text-2xl font-bold">${bs.toFixed(4)}</p>
+                <p className="mt-1 text-xs text-gray-400">
+                  Analytical ground truth
+                </p>
+              </div>
+            )}
 
             <div className="rounded-lg border p-4">
               <p className="mb-1 text-xs uppercase tracking-wide text-gray-400">
@@ -92,6 +100,11 @@ function ExperimentDetail({ experiment }) {
               <p className="mt-1 text-xs text-gray-400">
                 σ = {cmc.std_dev.toFixed(4)} · n = {cmc.n_samples.toLocaleString()}
               </p>
+              {!showAnalyticalBaseline && (
+                <p className="mt-1 text-xs text-gray-400">
+                  Simulation baseline for path-dependent / multi-asset pricing
+                </p>
+              )}
             </div>
 
             <div className="rounded-lg border p-4">
@@ -110,6 +123,11 @@ function ExperimentDetail({ experiment }) {
                 {qmc.qubit_count}q · depth {qmc.circuit_depth} ·{' '}
                 {qmc.runtime_ms.toFixed(0)}ms
               </p>
+              {!showAnalyticalBaseline && (
+                <p className="mt-1 text-xs text-gray-400">
+                  Error measured against Classical MC baseline
+                </p>
+              )}
             </div>
           </div>
 
