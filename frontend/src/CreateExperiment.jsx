@@ -6,6 +6,8 @@ function CreateExperiment({ onSuccess }) {
   const [metadata, setMetadata] = useState({
     name: '',
     algorithm: 'QMC_European',
+    execution_target: 'local_sync',
+    ibm_api_token: '',
   })
 
   const [parameters, setParameters] = useState({})
@@ -14,7 +16,15 @@ function CreateExperiment({ onSuccess }) {
   const [success, setSuccess] = useState(false)
 
   function handleMetadataChange(event) {
-    setMetadata({ ...metadata, [event.target.name]: event.target.value })
+    const { name, value } = event.target
+
+    setMetadata((current) => ({
+      ...current,
+      [name]: value,
+      ...(name === 'execution_target' && value !== 'ibm_qpu'
+        ? { ibm_api_token: '' }
+        : {}),
+    }))
   }
 
   function handleParameterChange(event) {
@@ -56,6 +66,12 @@ function CreateExperiment({ onSuccess }) {
           parsedParameters[field.name] = value
         }
       })
+
+      parsedParameters.execution_target = metadata.execution_target
+
+      if (metadata.execution_target === 'ibm_qpu') {
+        parsedParameters.ibm_api_token = metadata.ibm_api_token
+      }
 
       const payload = {
         name: metadata.name,
@@ -111,6 +127,43 @@ function CreateExperiment({ onSuccess }) {
           </select>
         </div>
 
+        <div className="flex flex-col gap-1">
+          <label className="text-sm font-medium">Execution Target</label>
+          <select
+            name="execution_target"
+            value={metadata.execution_target}
+            onChange={handleMetadataChange}
+            className="rounded border px-3 py-2"
+          >
+            <option value="local_sync">Local Synchronous Simulator</option>
+            <option value="background_worker">Background Worker Simulator</option>
+            <option value="ibm_qpu">IBM Physical QPU</option>
+          </select>
+        </div>
+
+        {metadata.execution_target === 'ibm_qpu' && (
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium" htmlFor="ibm-api-token">
+              IBM Quantum API Token
+            </label>
+            <input
+              id="ibm-api-token"
+              type="password"
+              name="ibm_api_token"
+              value={metadata.ibm_api_token}
+              onChange={handleMetadataChange}
+              placeholder="Paste your IBM Quantum API token"
+              autoComplete="new-password"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              data-lpignore="true"
+              data-1p-ignore="true"
+              className="rounded border px-3 py-2"
+            />
+          </div>
+        )}
+
         {ALGORITHM_CONFIGS[metadata.algorithm]?.fields.map((field) => (
           <div key={field.name} className="flex flex-col gap-1">
             <label className="text-sm font-medium">{field.label}</label>
@@ -140,6 +193,10 @@ function CreateExperiment({ onSuccess }) {
                 max={field.max}
                 className="rounded border px-3 py-2"
               />
+            )}
+
+            {field.helperText && (
+              <p className="text-xs text-slate-500">{field.helperText}</p>
             )}
           </div>
         ))}
