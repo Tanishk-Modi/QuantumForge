@@ -31,14 +31,33 @@ app.add_middleware(
 # -- Pydantic Schemas -- #
 
 class QMCParameters(BaseModel):
-    stock_price: float
-    volatility: float
-    strike_price: float
-    n_shots: int
-    simulator: Literal["aer_simulator", "statevector_simulator"] = "statevector_simulator"
-    risk_free_rate: float
-    time_to_expiry: float
-    num_uncertainty_qubits: int
+    model_config = ConfigDict(extra="allow")
+
+    # execution metadata
+    execution_target: Literal["local_sync", "background_worker", "ibm_qpu"] = "local_sync"
+    ibm_api_token: Optional[str] = None
+
+    strike_price: Optional[float] = None
+    risk_free_rate: Optional[float] = None
+    time_to_expiry: Optional[float] = None
+    num_uncertainty_qubits: Optional[int] = None
+    n_shots: Optional[int] = None
+    simulator: Optional[Literal["aer_simulator", "statevector_simulator"]] = "aer_simulator"
+
+    # European inputs
+    stock_price: Optional[float] = None
+    volatility: Optional[float] = None
+
+    # Asian-specific input
+    monitoring_dates: Optional[int] = None
+
+    # Basket inputs (2-asset MVP)
+    spot_price_1: Optional[float] = None
+    spot_price_2: Optional[float] = None
+    volatility_1: Optional[float] = None
+    volatility_2: Optional[float] = None
+    asset_weight_1: Optional[float] = None
+    asset_weight_2: Optional[float] = None
 
 
 class ExperimentCreate(BaseModel):
