@@ -37,6 +37,7 @@ class QMCParameters(BaseModel):
     execution_target: Literal["local_sync", "background_worker", "ibm_qpu"] = "local_sync"
     ibm_api_token: Optional[str] = None
 
+    # common pricing inputs
     strike_price: Optional[float] = None
     risk_free_rate: Optional[float] = None
     time_to_expiry: Optional[float] = None
@@ -48,16 +49,18 @@ class QMCParameters(BaseModel):
     stock_price: Optional[float] = None
     volatility: Optional[float] = None
 
-    # Asian-specific input
+    # Asian inputs
+    spot_price: Optional[float] = None
     monitoring_dates: Optional[int] = None
 
-    # Basket inputs (2-asset MVP)
+    # Basket inputs
     spot_price_1: Optional[float] = None
     spot_price_2: Optional[float] = None
     volatility_1: Optional[float] = None
     volatility_2: Optional[float] = None
-    asset_weight_1: Optional[float] = None
-    asset_weight_2: Optional[float] = None
+    asset_weight_1: Optional[float] = 0.5
+    asset_weight_2: Optional[float] = 0.5
+    correlation: Optional[float] = 0.0
 
 
 class ExperimentCreate(BaseModel):
