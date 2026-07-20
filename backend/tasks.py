@@ -1,4 +1,3 @@
-import json
 import os
 from datetime import datetime, timezone
 
@@ -46,14 +45,14 @@ def run_experiment_task(experiment_id: int):
         experiment.error_message = None
         db.commit()
 
-        params = json.loads(experiment.parameters)
+        params = experiment.parameters
 
         runner = get_runner(experiment.algorithm)
         results = runner(params)
 
         experiment.black_scholes_price = results["black_scholes_price"]
-        experiment.classical_mc_result = json.dumps(results["classical_mc_result"])
-        experiment.quantum_mc_result = json.dumps(results["quantum_mc_result"])
+        experiment.classical_mc_result = results["classical_mc_result"]
+        experiment.quantum_mc_result = results["quantum_mc_result"]
         experiment.error_classical = results["error_classical"]
         experiment.error_quantum = results["error_quantum"]
         experiment.status = "completed"

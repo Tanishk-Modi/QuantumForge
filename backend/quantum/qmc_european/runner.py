@@ -1,4 +1,3 @@
-import json
 from . import black_scholes, classical_mc, circuit
 
 def run(params: dict) -> dict:
@@ -12,8 +11,8 @@ def run(params: dict) -> dict:
 
     return {
         "black_scholes_price":  bs_price,
-        "classical_mc_result":  json.dumps(classical_price),
-        "quantum_mc_result":    json.dumps(quantum_price),
+        "classical_mc_result":  classical_price,
+        "quantum_mc_result":    quantum_price,
         "error_classical":      error_classical,
         "error_quantum":        error_quantum,
     }

@@ -1,4 +1,3 @@
-import json
 from datetime import datetime, timezone
 from typing import Literal, Optional, Union
 
@@ -7,13 +6,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy.orm import Session
 
-from database import Base, Experiment, engine, get_db
+from database import Base, Experiment, engine, get_db, normalize_legacy_experiment_rows
 from quantum.registry import get_runner
 from tasks import run_experiment_task
 
 
 app = FastAPI()
 Base.metadata.create_all(bind=engine)
+normalize_legacy_experiment_rows()
 
 origins = [
     "http://localhost:5173",
@@ -105,20 +105,6 @@ class ExperimentResponse(BaseModel):
     error_classical: Optional[float] = None
     error_quantum: Optional[float] = None
 
-    @field_validator("parameters", mode="before")
-    @classmethod
-    def parse_parameters(cls, value):
-        if isinstance(value, str):
-            return json.loads(value)
-        return value
-
-    @field_validator("classical_mc_result", "quantum_mc_result", mode="before")
-    @classmethod
-    def parse_result_json(cls, value):
-        if isinstance(value, str):
-            return json.loads(value)
-        return value
-
 
 # -- Helper Functions -- #
 
@@ -204,7 +190,7 @@ def create_experiment(
     db_experiment = Experiment(
         name=experiment.name,
         algorithm=experiment.algorithm,
-        parameters=json.dumps(params_dict),
+        parameters=params_dict,
         status="queued",
     )
 
@@ -244,8 +230,8 @@ def create_experiment(
         results = runner(params_dict)
 
         db_experiment.black_scholes_price = results["black_scholes_price"]
-        db_experiment.classical_mc_result = json.dumps(results["classical_mc_result"])
-        db_experiment.quantum_mc_result = json.dumps(results["quantum_mc_result"])
+        db_experiment.classical_mc_result = results["classical_mc_result"]
+        db_experiment.quantum_mc_result = results["quantum_mc_result"]
         db_experiment.error_classical = results["error_classical"]
         db_experiment.error_quantum = results["error_quantum"]
         db_experiment.status = "completed"
