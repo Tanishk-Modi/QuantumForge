@@ -13,6 +13,16 @@ import {
   hasAnalyticalBaseline,
 } from './config/algorithms'
 
+const STATUS_BANNER_STYLES = {
+  queued: 'border-gray-200 bg-gray-50 text-gray-600',
+  running: 'border-amber-200 bg-amber-50 text-amber-700',
+}
+
+const STATUS_BANNER_MESSAGES = {
+  queued: 'This experiment is queued and waiting for a worker to pick it up.',
+  running: 'This experiment is currently running in the background.',
+}
+
 function ExperimentDetail({ experiment }) {
   const analyticalResult = experiment.black_scholes_price
   const classicalResult = experiment.classical_mc_result
@@ -132,6 +142,8 @@ function ExperimentDetail({ experiment }) {
     ? display.getQuantumErrorText(experiment)
     : null
 
+  const isActiveStatus = experiment.status === 'queued' || experiment.status === 'running'
+
   return (
     <div className="rounded-lg border bg-white p-6">
       <div className="mb-6 flex items-start justify-between">
@@ -144,11 +156,24 @@ function ExperimentDetail({ experiment }) {
         </div>
       </div>
 
+      {isActiveStatus && (
+        <div
+          className={`mb-6 flex items-center gap-3 rounded-lg border p-4 text-sm ${STATUS_BANNER_STYLES[experiment.status]}`}
+        >
+          <span className="h-2 w-2 animate-pulse rounded-full bg-current" />
+          <span>{STATUS_BANNER_MESSAGES[experiment.status]}</span>
+        </div>
+      )}
+
+      {experiment.error_message && experiment.status === 'failed' && (
+        <p className="mb-4 text-sm text-red-500">{experiment.error_message}</p>
+      )}
+
       {experiment.status === 'failed' && (
         <p className="text-red-500">This experiment failed to run.</p>
       )}
 
-      {!hasResults && experiment.status !== 'failed' && (
+      {!hasResults && experiment.status !== 'failed' && !isActiveStatus && (
         <p className="text-gray-500">
           This experiment does not have completed result data yet.
         </p>

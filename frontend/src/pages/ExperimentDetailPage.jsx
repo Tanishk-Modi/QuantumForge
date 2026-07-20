@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import apiClient from '../api/client'
 import ExperimentDetail from '../ExperimentDetail'
+
+const POLL_INTERVAL_MS = 3000
+const ACTIVE_STATUSES = ['queued', 'running']
 
 function ExperimentDetailPage() {
   const { id } = useParams()
@@ -10,28 +13,68 @@ function ExperimentDetailPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
 
+  const intervalRef = useRef(null)
+
   useEffect(() => {
-    async function fetchExperiment() {
-      setIsLoading(true)
+    let isCancelled = false
+
+    async function fetchExperiment({ showLoading }) {
+      if (showLoading) {
+        setIsLoading(true)
+      }
       setError(null)
 
       try {
         const response = await apiClient.get(`/api/experiments/${id}`)
+
+        if (isCancelled) {
+          return
+        }
+
         setExperiment(response.data)
+
+        if (!ACTIVE_STATUSES.includes(response.data.status) && intervalRef.current) {
+          clearInterval(intervalRef.current)
+          intervalRef.current = null
+        }
       } catch (err) {
         console.error(err)
+
+        if (isCancelled) {
+          return
+        }
 
         if (err.response?.status === 404) {
           setError('Experiment not found.')
         } else {
           setError('Failed to fetch experiment.')
         }
+
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current)
+          intervalRef.current = null
+        }
       } finally {
-        setIsLoading(false)
+        if (showLoading && !isCancelled) {
+          setIsLoading(false)
+        }
       }
     }
 
-    fetchExperiment()
+    fetchExperiment({ showLoading: true })
+
+    intervalRef.current = setInterval(() => {
+      fetchExperiment({ showLoading: false })
+    }, POLL_INTERVAL_MS)
+
+    return () => {
+      isCancelled = true
+
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
   }, [id])
 
   if (isLoading) {

@@ -1,6 +1,23 @@
 import { useNavigate } from 'react-router-dom'
 import apiClient from './api/client'
 
+const STATUS_BADGE_STYLES = {
+  queued: 'bg-gray-100 text-gray-700',
+  running: 'bg-amber-100 text-amber-700',
+  completed: 'bg-green-100 text-green-700',
+  failed: 'bg-red-100 text-red-700',
+}
+
+function StatusBadge({ status }) {
+  const style = STATUS_BADGE_STYLES[status] ?? 'bg-gray-100 text-gray-700'
+
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${style}`}>
+      {status}
+    </span>
+  )
+}
+
 function ExperimentList({ experiments, isLoading, error, onDelete }) {
   const navigate = useNavigate()
 
@@ -38,9 +55,12 @@ function ExperimentList({ experiments, isLoading, error, onDelete }) {
         >
           <div>
             <p className="font-medium">{experiment.name}</p>
-            <p className="text-sm text-gray-500">
-              {experiment.algorithm} · {experiment.status} ·{' '}
-              {new Date(experiment.created_at).toLocaleString()}
+            <p className="mt-1 flex items-center gap-2 text-sm text-gray-500">
+              <span>{experiment.algorithm}</span>
+              <span>·</span>
+              <StatusBadge status={experiment.status} />
+              <span>·</span>
+              <span>{new Date(experiment.created_at).toLocaleString()}</span>
             </p>
           </div>
 

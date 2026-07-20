@@ -5,7 +5,8 @@ function NewExperimentPage() {
   const navigate = useNavigate()
 
   function handleSuccess(createdExperiment) {
-    navigate(`/experiments/${createdExperiment.id}`)
+    const experimentId = createdExperiment.id ?? createdExperiment.experiment_id
+    navigate(`/experiments/${experimentId}`)
   }
 
   return (
