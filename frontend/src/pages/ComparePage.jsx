@@ -10,6 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 import apiClient from '../api/client'
+import { getResultLabels, getSummaryFields, hasAnalyticalBaseline } from '../config/algorithms'
 
 function ComparePage() {
   const [experiments, setExperiments] = useState([])
@@ -99,7 +100,9 @@ function ComparePage() {
 
   const algorithms = [...new Set(comparedExperiments.map((exp) => exp.algorithm))]
   const comparisonAlgorithm = algorithms[0] || null
-  const showAnalyticalBaseline = comparisonAlgorithm === 'QMC_European'
+  const showAnalyticalBaseline = hasAnalyticalBaseline(comparisonAlgorithm)
+  const resultLabels = getResultLabels(comparisonAlgorithm)
+  const summaryFields = getSummaryFields(comparisonAlgorithm)
 
   const priceChartData = comparedExperiments.map((experiment) => {
     const row = {
@@ -109,7 +112,7 @@ function ComparePage() {
     }
 
     if (showAnalyticalBaseline) {
-      row.blackScholes = experiment.black_scholes_price
+      row.analytical = experiment.black_scholes_price
     }
 
     return row
@@ -124,32 +127,9 @@ function ComparePage() {
   }))
 
   function getExperimentSummary(experiment) {
-    const params = experiment.parameters
-
-    if (experiment.algorithm === 'QMC_Basket') {
-      return [
-        `Assets: ${params.spot_price_1}, ${params.spot_price_2}`,
-        `Vols: ${params.volatility_1}, ${params.volatility_2}`,
-        `Strike: ${params.strike_price}`,
-        `Shots: ${params.n_shots}`,
-      ]
-    }
-
-    if (experiment.algorithm === 'QMC_Asian') {
-      return [
-        `Spot: ${params.spot_price}`,
-        `Volatility: ${params.volatility}`,
-        `Monitoring: ${params.monitoring_dates}`,
-        `Shots: ${params.n_shots}`,
-      ]
-    }
-
-    return [
-      `Stock: ${params.stock_price}`,
-      `Volatility: ${params.volatility}`,
-      `Strike: ${params.strike_price}`,
-      `Shots: ${params.n_shots}`,
-    ]
+    return getSummaryFields(experiment.algorithm).map(
+      (field) => `${field.label}: ${experiment.parameters[field.name] ?? 'N/A'}`
+    )
   }
 
   return (
@@ -278,8 +258,8 @@ function ComparePage() {
               <h3 className="text-xl font-semibold">Price Comparison</h3>
               <p className="text-sm text-gray-500">
                 {showAnalyticalBaseline
-                  ? 'Compare the analytical baseline against classical and quantum estimates for each run.'
-                  : 'Compare the classical Monte Carlo baseline against the quantum estimate for each run.'}
+                  ? `Compare the ${resultLabels.analytical} baseline against classical and quantum estimates for each run.`
+                  : `Compare the ${resultLabels.classical} baseline against the ${resultLabels.quantum} estimate for each run.`}
               </p>
             </div>
 
@@ -310,9 +290,11 @@ function ComparePage() {
                   }}
                 />
                 <Legend />
-                {showAnalyticalBaseline && <Bar dataKey="blackScholes" name="Black-Scholes" fill="#6b7280" />}
-                <Bar dataKey="classical" name="Classical MC" fill="#16a34a" />
-                <Bar dataKey="quantum" name="Quantum MC" fill="#2563eb" />
+                {showAnalyticalBaseline && (
+                  <Bar dataKey="analytical" name={resultLabels.analytical} fill="#6b7280" />
+                )}
+                <Bar dataKey="classical" name={resultLabels.classical} fill="#16a34a" />
+                <Bar dataKey="quantum" name={resultLabels.quantum} fill="#2563eb" />
               </BarChart>
             </ResponsiveContainer>
           </section>
@@ -322,8 +304,8 @@ function ComparePage() {
               <h3 className="text-xl font-semibold">Error Comparison</h3>
               <p className="text-sm text-gray-500">
                 {showAnalyticalBaseline
-                  ? 'Lower percentages mean the estimate stayed closer to the Black-Scholes reference.'
-                  : 'Lower percentages mean the estimate stayed closer to the Classical MC baseline.'}
+                  ? `Lower percentages mean the estimate stayed closer to the ${resultLabels.analytical} reference.`
+                  : `Lower percentages mean the estimate stayed closer to the ${resultLabels.classical} baseline.`}
               </p>
             </div>
 
@@ -356,12 +338,12 @@ function ComparePage() {
                 <Legend />
                 <Bar
                   dataKey="classicalError"
-                  name="Classical Error"
+                  name={`${resultLabels.classical} Error`}
                   fill="#16a34a"
                 />
                 <Bar
                   dataKey="quantumError"
-                  name="Quantum Error"
+                  name={`${resultLabels.quantum} Error`}
                   fill="#2563eb"
                 />
               </BarChart>
@@ -382,12 +364,12 @@ function ComparePage() {
                 <thead>
                   <tr className="border-b text-left text-gray-500">
                     <th className="px-3 py-3 font-medium">Experiment</th>
-                    <th className="px-3 py-3 font-medium">Stock</th>
-                    <th className="px-3 py-3 font-medium">Volatility</th>
-                    <th className="px-3 py-3 font-medium">Strike</th>
-                    <th className="px-3 py-3 font-medium">Shots</th>
-                    <th className="px-3 py-3 font-medium">Simulator</th>
-                    <th className="px-3 py-3 font-medium">Quantum Price</th>
+                    {summaryFields.map((field) => (
+                      <th key={field.name} className="px-3 py-3 font-medium">
+                        {field.label}
+                      </th>
+                    ))}
+                    <th className="px-3 py-3 font-medium">{resultLabels.quantum} Price</th>
                     <th className="px-3 py-3 font-medium">CI Low</th>
                     <th className="px-3 py-3 font-medium">CI High</th>
                     <th className="px-3 py-3 font-medium">Qubits</th>
@@ -403,21 +385,11 @@ function ComparePage() {
                     return (
                       <tr key={experiment.id} className="border-b last:border-b-0">
                         <td className="px-3 py-3 font-medium">{experiment.name}</td>
-                        <td className="px-3 py-3">
-                          {experiment.parameters.stock_price}
-                        </td>
-                        <td className="px-3 py-3">
-                          {experiment.parameters.volatility}
-                        </td>
-                        <td className="px-3 py-3">
-                          {experiment.parameters.strike_price}
-                        </td>
-                        <td className="px-3 py-3">
-                          {experiment.parameters.n_shots}
-                        </td>
-                        <td className="px-3 py-3">
-                          {experiment.parameters.simulator}
-                        </td>
+                        {summaryFields.map((field) => (
+                          <td key={field.name} className="px-3 py-3">
+                            {experiment.parameters[field.name] ?? 'N/A'}
+                          </td>
+                        ))}
                         <td className="px-3 py-3">
                           {qmc?.price?.toFixed(4) ?? 'N/A'}
                         </td>

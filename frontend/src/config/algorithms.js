@@ -2,6 +2,14 @@
 
 export const ALGORITHM_CONFIGS = {
   QMC_European: {
+    label: "European Option (QMC)",
+    hasAnalyticalBaseline: true,
+    resultLabels: {
+      analytical: "Black-Scholes",
+      classical: "Classical MC",
+      quantum: "Quantum MC",
+    },
+    summaryFields: ["stock_price", "volatility", "strike_price", "n_shots", "simulator"],
     fields: [
       {
         name: "stock_price",
@@ -97,6 +105,21 @@ export const ALGORITHM_CONFIGS = {
   },
 
   QMC_Basket: {
+    label: "Basket Option (QMC)",
+    hasAnalyticalBaseline: false,
+    resultLabels: {
+      classical: "Classical MC",
+      quantum: "Quantum MC",
+    },
+    summaryFields: [
+      "spot_price_1",
+      "spot_price_2",
+      "volatility_1",
+      "volatility_2",
+      "strike_price",
+      "n_shots",
+      "simulator",
+    ],
     fields: [
       {
         name: "spot_price_1",
@@ -233,6 +256,20 @@ export const ALGORITHM_CONFIGS = {
   },
 
   QMC_Asian: {
+    label: "Asian Option (QMC)",
+    hasAnalyticalBaseline: false,
+    resultLabels: {
+      classical: "Classical MC",
+      quantum: "Quantum MC",
+    },
+    summaryFields: [
+      "spot_price",
+      "volatility",
+      "monitoring_dates",
+      "strike_price",
+      "n_shots",
+      "simulator",
+    ],
     fields: [
       {
         name: "spot_price",
@@ -338,3 +375,40 @@ export const ALGORITHM_CONFIGS = {
     ],
   },
 };
+
+// -- Shared helpers so components never hardcode field names or labels -- //
+
+export function getFieldConfig(algorithm, fieldName) {
+  const config = ALGORITHM_CONFIGS[algorithm];
+  if (!config) return null;
+  return config.fields.find((field) => field.name === fieldName) ?? null;
+}
+
+// Returns [{ name, label }] for the fields an algorithm wants shown in
+// summary/comparison views (selection previews, compare table columns, etc).
+export function getSummaryFields(algorithm) {
+  const config = ALGORITHM_CONFIGS[algorithm];
+  if (!config) return [];
+
+  return config.summaryFields.map((fieldName) => {
+    const field = getFieldConfig(algorithm, fieldName);
+    return { name: fieldName, label: field?.label ?? fieldName };
+  });
+}
+
+export function getResultLabels(algorithm) {
+  return (
+    ALGORITHM_CONFIGS[algorithm]?.resultLabels ?? {
+      classical: "Classical MC",
+      quantum: "Quantum MC",
+    }
+  );
+}
+
+export function hasAnalyticalBaseline(algorithm) {
+  return Boolean(ALGORITHM_CONFIGS[algorithm]?.hasAnalyticalBaseline);
+}
+
+export function getAlgorithmLabel(algorithm) {
+  return ALGORITHM_CONFIGS[algorithm]?.label ?? algorithm;
+}

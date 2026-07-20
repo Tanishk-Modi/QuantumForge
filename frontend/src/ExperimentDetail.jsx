@@ -7,13 +7,16 @@ import {
   YAxis,
   Tooltip,
 } from 'recharts'
+import { getResultLabels, hasAnalyticalBaseline } from './config/algorithms'
 
 function ExperimentDetail({ experiment }) {
   const bs = experiment.black_scholes_price
   const cmc = experiment.classical_mc_result
   const qmc = experiment.quantum_mc_result
 
-  const showAnalyticalBaseline = experiment.algorithm === 'QMC_European' && bs !== null
+  const resultLabels = getResultLabels(experiment.algorithm)
+  const showAnalyticalBaseline =
+    hasAnalyticalBaseline(experiment.algorithm) && bs !== null && bs !== undefined
   const hasResults = experiment.status === 'completed' && cmc && qmc
 
   let chartData = []
@@ -42,13 +45,13 @@ function ExperimentDetail({ experiment }) {
 
     chartData = showAnalyticalBaseline
       ? [
-          { name: 'Black-Scholes', price: bs, fill: '#6b7280' },
-          { name: 'Classical MC', price: cmc.price, fill: '#16a34a' },
-          { name: 'Quantum MC', price: qmc.price, fill: '#2563eb' },
+          { name: resultLabels.analytical, price: bs, fill: '#6b7280' },
+          { name: resultLabels.classical, price: cmc.price, fill: '#16a34a' },
+          { name: resultLabels.quantum, price: qmc.price, fill: '#2563eb' },
         ]
       : [
-          { name: 'Classical MC', price: cmc.price, fill: '#16a34a' },
-          { name: 'Quantum MC', price: qmc.price, fill: '#2563eb' },
+          { name: resultLabels.classical, price: cmc.price, fill: '#16a34a' },
+          { name: resultLabels.quantum, price: qmc.price, fill: '#2563eb' },
         ]
   }
 
@@ -80,7 +83,7 @@ function ExperimentDetail({ experiment }) {
             {showAnalyticalBaseline && (
               <div className="rounded-lg border p-4">
                 <p className="mb-1 text-xs uppercase tracking-wide text-gray-400">
-                  Black-Scholes
+                  {resultLabels.analytical}
                 </p>
                 <p className="text-2xl font-bold">${bs.toFixed(4)}</p>
                 <p className="mt-1 text-xs text-gray-400">
@@ -91,7 +94,7 @@ function ExperimentDetail({ experiment }) {
 
             <div className="rounded-lg border p-4">
               <p className="mb-1 text-xs uppercase tracking-wide text-gray-400">
-                Classical MC
+                {resultLabels.classical}
               </p>
               <p className="text-2xl font-bold">${cmc.price.toFixed(4)}</p>
               <p className="mt-1 text-sm text-gray-500">
@@ -109,7 +112,7 @@ function ExperimentDetail({ experiment }) {
 
             <div className="rounded-lg border p-4">
               <p className="mb-1 text-xs uppercase tracking-wide text-gray-400">
-                Quantum MC
+                {resultLabels.quantum}
               </p>
               <p className="text-2xl font-bold">${qmc.price.toFixed(4)}</p>
               <p className="mt-1 text-sm text-gray-500">
@@ -125,7 +128,7 @@ function ExperimentDetail({ experiment }) {
               </p>
               {!showAnalyticalBaseline && (
                 <p className="mt-1 text-xs text-gray-400">
-                  Error measured against Classical MC baseline
+                  Error measured against {resultLabels.classical} baseline
                 </p>
               )}
             </div>
