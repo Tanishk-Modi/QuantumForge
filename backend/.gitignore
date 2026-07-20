@@ -3,3 +3,4 @@ __pycache__/
 backend/.venv/
 qforge.db
 *.db
+.env

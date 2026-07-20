@@ -2,9 +2,11 @@ import math
 import time
 from qiskit import QuantumCircuit, transpile
 from qiskit.primitives import StatevectorSampler
+from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit_aer.primitives import SamplerV2 as AerSamplerV2
 from qiskit_finance.circuit.library import LogNormalDistribution, EuropeanCallPricingObjective
 from qiskit_algorithms import IterativeAmplitudeEstimation, EstimationProblem
+from qiskit_ibm_runtime import QiskitRuntimeService, SamplerV2 as IBMSamplerV2
 
 C_APPROX = 0.25  # linear approximation scaling factor
 DEFAULT_SEED = 75
@@ -28,6 +30,54 @@ class TranspilingAerSampler:
                 transpiled_pubs.append(transpiled)
 
         return self._sampler.run(transpiled_pubs)
+
+
+class TranspilingIBMSampler:
+    def __init__(self, backend, default_shots: int):
+        self._default_shots = default_shots
+        self._sampler = IBMSamplerV2(mode=backend)
+        self._sampler.options.default_shots = default_shots
+        self._pass_manager = generate_preset_pass_manager(backend=backend, optimization_level=1)
+
+    def run(self, pubs):
+        transpiled_pubs = []
+
+        for pub in pubs:
+            qc = pub[0] if isinstance(pub, tuple) else pub
+            transpiled = self._pass_manager.run(qc.decompose(reps=10))
+
+            if isinstance(pub, tuple):
+                transpiled_pubs.append((transpiled, *pub[1:]))
+            else:
+                transpiled_pubs.append(transpiled)
+
+        job = self._sampler.run(transpiled_pubs, shots=self._default_shots)
+        return _ShotsPatchingJob(job, self._default_shots)
+
+
+class _ShotsPatchingJob:
+    """Wraps a RuntimeJobV2 so each pub result's metadata always has a
+    'shots' key. qiskit_algorithms.IterativeAmplitudeEstimation reads
+    result[i].metadata["shots"], but real-hardware SamplerV2 results on
+    newer qiskit-ibm-runtime versions don't always populate that key.
+    We already know the requested shot count, so we backfill it here
+    instead of pinning to an old, Qiskit-incompatible runtime version.
+    """
+
+    def __init__(self, job, shots: int):
+        self._job = job
+        self._shots = shots
+
+    def result(self):
+        primitive_result = self._job.result()
+
+        for pub_result in primitive_result:
+            pub_result.metadata.setdefault("shots", self._shots)
+
+        return primitive_result
+
+    def __getattr__(self, name):
+        return getattr(self._job, name)
 
 
 def _build_problem(params: dict):
@@ -75,6 +125,17 @@ def _build_problem(params: dict):
 
 
 def _select_sampler(params: dict):
+    if params.get("execution_target") == "ibm_qpu":
+        token = params.get("ibm_api_token")
+        if not token:
+            raise ValueError("IBM API token is required for ibm_qpu execution.")
+
+        service = QiskitRuntimeService(channel="ibm_quantum_platform", token=token)
+        backend = service.least_busy(operational=True, simulator=False)
+        shots = int(params.get("n_shots", DEFAULT_SHOTS))
+
+        return TranspilingIBMSampler(backend, default_shots=shots), backend.name, shots, None
+
     simulator = params.get("simulator", "statevector_simulator")
 
     if simulator == "aer_simulator":

@@ -24,7 +24,7 @@ celery_app.conf.update(
 
 
 @celery_app.task(name="run_experiment_task")
-def run_experiment_task(experiment_id: int):
+def run_experiment_task(experiment_id: int, ibm_api_token: str | None = None):
     db = SessionLocal()
 
     try:
@@ -45,7 +45,9 @@ def run_experiment_task(experiment_id: int):
         experiment.error_message = None
         db.commit()
 
-        params = experiment.parameters
+        params = dict(experiment.parameters)
+        if ibm_api_token:
+            params["ibm_api_token"] = ibm_api_token
 
         runner = get_runner(experiment.algorithm)
         results = runner(params)

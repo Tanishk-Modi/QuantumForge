@@ -185,12 +185,13 @@ def create_experiment(
     response: Response,
     db: Session = Depends(get_db),
 ):
-    params_dict = experiment.parameters.model_dump()
+    ibm_api_token = experiment.parameters.ibm_api_token
+    stored_params = experiment.parameters.model_dump(exclude={"ibm_api_token"})
 
     db_experiment = Experiment(
         name=experiment.name,
         algorithm=experiment.algorithm,
-        parameters=params_dict,
+        parameters=stored_params,
         status="queued",
     )
 
@@ -200,7 +201,7 @@ def create_experiment(
 
     if should_queue_experiment(experiment.parameters):
         try:
-            task = run_experiment_task.delay(db_experiment.id)
+            task = run_experiment_task.delay(db_experiment.id, ibm_api_token)
             db_experiment.task_id = task.id
             db.commit()
 
@@ -227,7 +228,7 @@ def create_experiment(
 
     try:
         runner = get_runner(experiment.algorithm)
-        results = runner(params_dict)
+        results = runner(stored_params)
 
         db_experiment.black_scholes_price = results["black_scholes_price"]
         db_experiment.classical_mc_result = results["classical_mc_result"]
