@@ -62,6 +62,14 @@ class QMCParameters(BaseModel):
     asset_weight_2: Optional[float] = 0.5
     correlation: Optional[float] = 0.0
 
+    # HHL / CFD inputs
+    system_size_n: Optional[int] = None
+    condition_number: Optional[float] = None
+    matrix_sparsity: Optional[float] = None
+    target_precision: Optional[float] = None
+    hamiltonian_time: Optional[float] = None
+    num_clock_qubits: Optional[int] = None
+
 
 class ExperimentCreate(BaseModel):
     name: str

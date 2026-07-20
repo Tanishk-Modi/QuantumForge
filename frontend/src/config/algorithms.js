@@ -1,414 +1,641 @@
-// frontend schema registry
+function isFiniteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function formatFixed(value, decimals = 4) {
+  return isFiniteNumber(value) ? value.toFixed(decimals) : 'N/A'
+}
+
+function formatInteger(value) {
+  return Number.isInteger(value) ? value.toLocaleString() : 'N/A'
+}
+
+function createQuantumMonteCarloDisplay({ hasAnalyticalBaseline }) {
+  return {
+    comparisonTitle: 'Price Comparison',
+    comparisonValueLabel: 'Price',
+    valueKey: 'price',
+    unitPrefix: '$',
+    unitSuffix: '',
+    valueDecimals: 4,
+    axisDecimals: 2,
+
+    getAnalyticalValue(experiment) {
+      return experiment.black_scholes_price ?? null
+    },
+
+    getClassicalValue(experiment) {
+      return experiment.classical_mc_result?.price ?? null
+    },
+
+    getQuantumValue(experiment) {
+      return experiment.quantum_mc_result?.price ?? null
+    },
+
+    formatValue(value, decimals = 4) {
+      if (!isFiniteNumber(value)) {
+        return 'N/A'
+      }
+
+      return `$${value.toFixed(decimals)}`
+    },
+
+    getClassicalErrorText(experiment) {
+      if (!isFiniteNumber(experiment.error_classical)) {
+        return null
+      }
+
+      return `Error: ${(experiment.error_classical * 100).toFixed(2)}%`
+    },
+
+    getQuantumErrorText(experiment) {
+      if (!isFiniteNumber(experiment.error_quantum)) {
+        return null
+      }
+
+      return `Error: ${(experiment.error_quantum * 100).toFixed(2)}%`
+    },
+
+    getClassicalDetailLines({ classicalResult }) {
+      const lines = []
+
+      if (isFiniteNumber(classicalResult?.std_dev) && Number.isInteger(classicalResult?.n_samples)) {
+        lines.push(
+          `σ = ${classicalResult.std_dev.toFixed(4)} · n = ${classicalResult.n_samples.toLocaleString()}`
+        )
+      }
+
+      if (isFiniteNumber(classicalResult?.runtime_ms)) {
+        lines.push(`Runtime: ${classicalResult.runtime_ms.toFixed(0)}ms`)
+      }
+
+      if (!hasAnalyticalBaseline) {
+        lines.push('Simulation baseline for path-dependent / multi-asset pricing')
+      }
+
+      return lines
+    },
+
+    getQuantumDetailLines({ quantumResult, resultLabels, showAnalyticalBaseline }) {
+      const lines = []
+
+      if (
+        isFiniteNumber(quantumResult?.confidence_interval_low) &&
+        isFiniteNumber(quantumResult?.confidence_interval_high)
+      ) {
+        lines.push(
+          `CI: [${quantumResult.confidence_interval_low.toFixed(4)}, ${quantumResult.confidence_interval_high.toFixed(4)}]`
+        )
+      }
+
+      const metricParts = []
+
+      if (Number.isInteger(quantumResult?.qubit_count)) {
+        metricParts.push(`${quantumResult.qubit_count}q`)
+      }
+
+      if (Number.isInteger(quantumResult?.circuit_depth)) {
+        metricParts.push(`depth ${quantumResult.circuit_depth}`)
+      }
+
+      if (isFiniteNumber(quantumResult?.runtime_ms)) {
+        metricParts.push(`${quantumResult.runtime_ms.toFixed(0)}ms`)
+      }
+
+      if (metricParts.length > 0) {
+        lines.push(metricParts.join(' · '))
+      }
+
+      if (!showAnalyticalBaseline) {
+        lines.push(`Error measured against ${resultLabels.classical} baseline`)
+      }
+
+      return lines
+    },
+
+    confidenceInterval: {
+      enabled: true,
+      title: 'Quantum Confidence Interval',
+      description:
+        'The blue band shows the estimated confidence interval, and the dot marks the quantum estimate.',
+      estimateKey: 'price',
+      lowKey: 'confidence_interval_low',
+      highKey: 'confidence_interval_high',
+    },
+
+    getComparisonDescription({ showAnalyticalBaseline, resultLabels }) {
+      return showAnalyticalBaseline
+        ? `Compare the ${resultLabels.analytical} baseline against classical and quantum estimates for each run.`
+        : `Compare the ${resultLabels.classical} baseline against the ${resultLabels.quantum} estimate for each run.`
+    },
+
+    getErrorComparisonDescription({ showAnalyticalBaseline, resultLabels }) {
+      return showAnalyticalBaseline
+        ? `Lower percentages mean the estimate stayed closer to the ${resultLabels.analytical} reference.`
+        : `Lower percentages mean the estimate stayed closer to the ${resultLabels.classical} baseline.`
+    },
+
+    getErrorChartData(experiments) {
+      return experiments.map((experiment) => ({
+        name: experiment.name,
+        classicalError: isFiniteNumber(experiment.error_classical)
+          ? experiment.error_classical * 100
+          : 0,
+        quantumError: isFiniteNumber(experiment.error_quantum)
+          ? experiment.error_quantum * 100
+          : 0,
+      }))
+    },
+
+    formatErrorValue(value, decimals = 2) {
+      return isFiniteNumber(value) ? `${value.toFixed(decimals)}%` : 'N/A'
+    },
+
+    getComparisonHighlight(experiments) {
+      const validQuantumErrors = experiments
+        .map((experiment) => experiment.error_quantum)
+        .filter(isFiniteNumber)
+
+      if (validQuantumErrors.length === 0) {
+        return {
+          label: 'Best Quantum Error',
+          value: 'N/A',
+        }
+      }
+
+      return {
+        label: 'Best Quantum Error',
+        value: `${Math.min(...validQuantumErrors.map((value) => value * 100)).toFixed(2)}%`,
+      }
+    },
+
+    getCompareTableColumns(resultLabels) {
+      return [
+        {
+          label: `${resultLabels.quantum} Price`,
+          render: (experiment) => formatFixed(experiment.quantum_mc_result?.price, 4),
+        },
+        {
+          label: 'CI Low',
+          render: (experiment) => formatFixed(experiment.quantum_mc_result?.confidence_interval_low, 4),
+        },
+        {
+          label: 'CI High',
+          render: (experiment) => formatFixed(experiment.quantum_mc_result?.confidence_interval_high, 4),
+        },
+        {
+          label: 'Qubits',
+          render: (experiment) =>
+            Number.isInteger(experiment.quantum_mc_result?.qubit_count)
+              ? experiment.quantum_mc_result.qubit_count
+              : 'N/A',
+        },
+        {
+          label: 'Depth',
+          render: (experiment) =>
+            Number.isInteger(experiment.quantum_mc_result?.circuit_depth)
+              ? experiment.quantum_mc_result.circuit_depth
+              : 'N/A',
+        },
+        {
+          label: 'Runtime',
+          render: (experiment) =>
+            isFiniteNumber(experiment.quantum_mc_result?.runtime_ms)
+              ? `${experiment.quantum_mc_result.runtime_ms.toFixed(0)} ms`
+              : 'N/A',
+        },
+      ]
+    },
+  }
+}
 
 export const ALGORITHM_CONFIGS = {
   QMC_European: {
-    label: "European Option (QMC)",
+    label: 'European Option (QMC)',
     hasAnalyticalBaseline: true,
     resultLabels: {
-      analytical: "Black-Scholes",
-      classical: "Classical MC",
-      quantum: "Quantum MC",
+      analytical: 'Black-Scholes',
+      classical: 'Classical MC',
+      quantum: 'Quantum MC',
     },
-    summaryFields: ["stock_price", "volatility", "strike_price", "n_shots", "simulator"],
+    summaryFields: ['stock_price', 'volatility', 'strike_price', 'n_shots', 'simulator'],
+    display: createQuantumMonteCarloDisplay({ hasAnalyticalBaseline: true }),
     fields: [
       {
-        name: "stock_price",
-        label: "Stock Price ($)",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 100",
-        default: "",
+        name: 'stock_price',
+        label: 'Stock Price ($)',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 100',
+        default: '',
       },
       {
-        name: "volatility",
-        label: "Volatility (0 – 1)",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 0.3",
-        step: "0.01",
-        min: "0",
-        max: "1",
-        default: "",
+        name: 'volatility',
+        label: 'Volatility (0 – 1)',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 0.3',
+        step: '0.01',
+        min: '0',
+        max: '1',
+        default: '',
       },
       {
-        name: "strike_price",
-        label: "Strike Price ($)",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 105",
-        default: "",
+        name: 'strike_price',
+        label: 'Strike Price ($)',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 105',
+        default: '',
       },
       {
-        name: "risk_free_rate",
-        label: "Risk-Free Rate (annual)",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 0.05",
-        step: "0.01",
-        min: "0",
-        default: "0.05",
+        name: 'risk_free_rate',
+        label: 'Risk-Free Rate (annual)',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 0.05',
+        step: '0.01',
+        min: '0',
+        default: '0.05',
       },
       {
-        name: "time_to_expiry",
-        label: "Time to Expiry (years)",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 1.0",
-        step: "0.25",
-        min: "0",
-        default: "1.0",
+        name: 'time_to_expiry',
+        label: 'Time to Expiry (years)',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 1.0',
+        step: '0.25',
+        min: '0',
+        default: '1.0',
       },
       {
-        name: "num_uncertainty_qubits",
-        label: "Uncertainty Qubits",
-        type: "select",
-        dataType: "int",
-        default: "3",
-        helperText: "Higher qubit counts increase fidelity, but values above 5 should run asynchronously.",
+        name: 'num_uncertainty_qubits',
+        label: 'Uncertainty Qubits',
+        type: 'select',
+        dataType: 'int',
+        default: '3',
+        helperText: 'Higher qubit counts increase fidelity, but values above 5 should run asynchronously.',
         options: [
-          { value: "3", label: "3 — fast, lower precision" },
-          { value: "4", label: "4" },
-          { value: "5", label: "5" },
-          { value: "6", label: "6 — async recommended" },
-          { value: "7", label: "7 — async recommended" },
-          { value: "8", label: "8 — async recommended" },
-          { value: "9", label: "9 — async recommended" },
-          { value: "10", label: "10 — async required" },
+          { value: '3', label: '3 — fast, lower precision' },
+          { value: '4', label: '4' },
+          { value: '5', label: '5' },
+          { value: '6', label: '6 — async recommended' },
+          { value: '7', label: '7 — async recommended' },
+          { value: '8', label: '8 — async recommended' },
+          { value: '9', label: '9 — async recommended' },
+          { value: '10', label: '10 — async required' },
         ],
       },
       {
-        name: "n_shots",
-        label: "Number of Shots",
-        type: "select",
-        dataType: "int",
-        default: "",
+        name: 'n_shots',
+        label: 'Number of Shots',
+        type: 'select',
+        dataType: 'int',
+        default: '',
         options: [
-          { value: "", label: "Select shots" },
-          { value: "512", label: "512" },
-          { value: "1024", label: "1024" },
-          { value: "2048", label: "2048" },
-          { value: "4096", label: "4096" },
+          { value: '', label: 'Select shots' },
+          { value: '512', label: '512' },
+          { value: '1024', label: '1024' },
+          { value: '2048', label: '2048' },
+          { value: '4096', label: '4096' },
         ],
       },
       {
-        name: "simulator",
-        label: "Simulator",
-        type: "select",
-        dataType: "string",
-        default: "aer_simulator",
+        name: 'simulator',
+        label: 'Simulator',
+        type: 'select',
+        dataType: 'string',
+        default: 'aer_simulator',
         options: [
-          { value: "aer_simulator", label: "Aer Simulator" },
-          { value: "statevector_simulator", label: "Statevector Simulator" },
+          { value: 'aer_simulator', label: 'Aer Simulator' },
+          { value: 'statevector_simulator', label: 'Statevector Simulator' },
         ],
       },
     ],
   },
 
   QMC_Basket: {
-    label: "Basket Option (QMC)",
+    label: 'Basket Option (QMC)',
     hasAnalyticalBaseline: false,
     resultLabels: {
-      classical: "Classical MC",
-      quantum: "Quantum MC",
+      classical: 'Classical MC',
+      quantum: 'Quantum MC',
     },
     summaryFields: [
-      "spot_price_1",
-      "spot_price_2",
-      "volatility_1",
-      "volatility_2",
-      "strike_price",
-      "n_shots",
-      "simulator",
+      'spot_price_1',
+      'spot_price_2',
+      'volatility_1',
+      'volatility_2',
+      'strike_price',
+      'n_shots',
+      'simulator',
     ],
+    display: createQuantumMonteCarloDisplay({ hasAnalyticalBaseline: false }),
     fields: [
       {
-        name: "spot_price_1",
-        label: "Asset 1 Spot Price ($)",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 100",
-        default: "",
+        name: 'spot_price_1',
+        label: 'Asset 1 Spot Price ($)',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 100',
+        default: '',
       },
       {
-        name: "spot_price_2",
-        label: "Asset 2 Spot Price ($)",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 95",
-        default: "",
+        name: 'spot_price_2',
+        label: 'Asset 2 Spot Price ($)',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 95',
+        default: '',
       },
       {
-        name: "volatility_1",
-        label: "Asset 1 Volatility (0 – 1)",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 0.25",
-        step: "0.01",
-        min: "0",
-        max: "1",
-        default: "",
+        name: 'volatility_1',
+        label: 'Asset 1 Volatility (0 – 1)',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 0.25',
+        step: '0.01',
+        min: '0',
+        max: '1',
+        default: '',
       },
       {
-        name: "volatility_2",
-        label: "Asset 2 Volatility (0 – 1)",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 0.30",
-        step: "0.01",
-        min: "0",
-        max: "1",
-        default: "",
+        name: 'volatility_2',
+        label: 'Asset 2 Volatility (0 – 1)',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 0.30',
+        step: '0.01',
+        min: '0',
+        max: '1',
+        default: '',
       },
       {
-        name: "asset_weight_1",
-        label: "Asset 1 Weight",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 0.5",
-        step: "0.01",
-        min: "0",
-        max: "1",
-        default: "0.5",
+        name: 'asset_weight_1',
+        label: 'Asset 1 Weight',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 0.5',
+        step: '0.01',
+        min: '0',
+        max: '1',
+        default: '0.5',
       },
       {
-        name: "asset_weight_2",
-        label: "Asset 2 Weight",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 0.5",
-        step: "0.01",
-        min: "0",
-        max: "1",
-        default: "0.5",
+        name: 'asset_weight_2',
+        label: 'Asset 2 Weight',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 0.5',
+        step: '0.01',
+        min: '0',
+        max: '1',
+        default: '0.5',
       },
       {
-        name: "strike_price",
-        label: "Strike Price ($)",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 105",
-        default: "",
+        name: 'strike_price',
+        label: 'Strike Price ($)',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 105',
+        default: '',
       },
       {
-        name: "risk_free_rate",
-        label: "Risk-Free Rate (annual)",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 0.05",
-        step: "0.01",
-        min: "0",
-        default: "0.05",
+        name: 'risk_free_rate',
+        label: 'Risk-Free Rate (annual)',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 0.05',
+        step: '0.01',
+        min: '0',
+        default: '0.05',
       },
       {
-        name: "time_to_expiry",
-        label: "Time to Expiry (years)",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 1.0",
-        step: "0.25",
-        min: "0",
-        default: "1.0",
+        name: 'time_to_expiry',
+        label: 'Time to Expiry (years)',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 1.0',
+        step: '0.25',
+        min: '0',
+        default: '1.0',
       },
       {
-        name: "num_uncertainty_qubits",
-        label: "Uncertainty Qubits",
-        type: "select",
-        dataType: "int",
-        default: "3",
-        helperText: "Higher qubit counts increase fidelity, but values above 5 should run asynchronously.",
+        name: 'num_uncertainty_qubits',
+        label: 'Uncertainty Qubits',
+        type: 'select',
+        dataType: 'int',
+        default: '3',
+        helperText: 'Higher qubit counts increase fidelity, but values above 5 should run asynchronously.',
         options: [
-          { value: "3", label: "3 — fast, lower precision" },
-          { value: "4", label: "4" },
-          { value: "5", label: "5" },
-          { value: "6", label: "6 — async recommended" },
-          { value: "7", label: "7 — async recommended" },
-          { value: "8", label: "8 — async recommended" },
-          { value: "9", label: "9 — async recommended" },
-          { value: "10", label: "10 — async required" },
+          { value: '3', label: '3 — fast, lower precision' },
+          { value: '4', label: '4' },
+          { value: '5', label: '5' },
+          { value: '6', label: '6 — async recommended' },
+          { value: '7', label: '7 — async recommended' },
+          { value: '8', label: '8 — async recommended' },
+          { value: '9', label: '9 — async recommended' },
+          { value: '10', label: '10 — async required' },
         ],
       },
       {
-        name: "n_shots",
-        label: "Number of Shots",
-        type: "select",
-        dataType: "int",
-        default: "",
+        name: 'n_shots',
+        label: 'Number of Shots',
+        type: 'select',
+        dataType: 'int',
+        default: '',
         options: [
-          { value: "", label: "Select shots" },
-          { value: "512", label: "512" },
-          { value: "1024", label: "1024" },
-          { value: "2048", label: "2048" },
-          { value: "4096", label: "4096" },
+          { value: '', label: 'Select shots' },
+          { value: '512', label: '512' },
+          { value: '1024', label: '1024' },
+          { value: '2048', label: '2048' },
+          { value: '4096', label: '4096' },
         ],
       },
       {
-        name: "simulator",
-        label: "Simulator",
-        type: "select",
-        dataType: "string",
-        default: "aer_simulator",
+        name: 'simulator',
+        label: 'Simulator',
+        type: 'select',
+        dataType: 'string',
+        default: 'aer_simulator',
         options: [
-          { value: "aer_simulator", label: "Aer Simulator" },
-          { value: "statevector_simulator", label: "Statevector Simulator" },
+          { value: 'aer_simulator', label: 'Aer Simulator' },
+          { value: 'statevector_simulator', label: 'Statevector Simulator' },
         ],
       },
     ],
   },
 
   QMC_Asian: {
-    label: "Asian Option (QMC)",
+    label: 'Asian Option (QMC)',
     hasAnalyticalBaseline: false,
     resultLabels: {
-      classical: "Classical MC",
-      quantum: "Quantum MC",
+      classical: 'Classical MC',
+      quantum: 'Quantum MC',
     },
     summaryFields: [
-      "spot_price",
-      "volatility",
-      "monitoring_dates",
-      "strike_price",
-      "n_shots",
-      "simulator",
+      'spot_price',
+      'volatility',
+      'monitoring_dates',
+      'strike_price',
+      'n_shots',
+      'simulator',
     ],
+    display: createQuantumMonteCarloDisplay({ hasAnalyticalBaseline: false }),
     fields: [
       {
-        name: "spot_price",
-        label: "Spot Price ($)",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 100",
-        default: "",
+        name: 'spot_price',
+        label: 'Spot Price ($)',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 100',
+        default: '',
       },
       {
-        name: "strike_price",
-        label: "Strike Price ($)",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 105",
-        default: "",
+        name: 'strike_price',
+        label: 'Strike Price ($)',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 105',
+        default: '',
       },
       {
-        name: "volatility",
-        label: "Volatility (0 – 1)",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 0.3",
-        step: "0.01",
-        min: "0",
-        max: "1",
-        default: "",
+        name: 'volatility',
+        label: 'Volatility (0 – 1)',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 0.3',
+        step: '0.01',
+        min: '0',
+        max: '1',
+        default: '',
       },
       {
-        name: "risk_free_rate",
-        label: "Risk-Free Rate (annual)",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 0.05",
-        step: "0.01",
-        min: "0",
-        default: "0.05",
+        name: 'risk_free_rate',
+        label: 'Risk-Free Rate (annual)',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 0.05',
+        step: '0.01',
+        min: '0',
+        default: '0.05',
       },
       {
-        name: "time_to_expiry",
-        label: "Time to Expiry (years)",
-        type: "number",
-        dataType: "float",
-        placeholder: "e.g. 1.0",
-        step: "0.25",
-        min: "0",
-        default: "1.0",
+        name: 'time_to_expiry',
+        label: 'Time to Expiry (years)',
+        type: 'number',
+        dataType: 'float',
+        placeholder: 'e.g. 1.0',
+        step: '0.25',
+        min: '0',
+        default: '1.0',
       },
       {
-        name: "monitoring_dates",
-        label: "Monitoring Dates",
-        type: "number",
-        dataType: "int",
-        placeholder: "e.g. 12",
-        step: "1",
-        min: "2",
-        max: "20",
-        default: "12",
+        name: 'monitoring_dates',
+        label: 'Monitoring Dates',
+        type: 'number',
+        dataType: 'int',
+        placeholder: 'e.g. 12',
+        step: '1',
+        min: '2',
+        max: '20',
+        default: '12',
       },
       {
-        name: "num_uncertainty_qubits",
-        label: "Uncertainty Qubits",
-        type: "select",
-        dataType: "int",
-        default: "3",
-        helperText: "Higher qubit counts increase fidelity, but values above 5 should run asynchronously.",
+        name: 'num_uncertainty_qubits',
+        label: 'Uncertainty Qubits',
+        type: 'select',
+        dataType: 'int',
+        default: '3',
+        helperText: 'Higher qubit counts increase fidelity, but values above 5 should run asynchronously.',
         options: [
-          { value: "3", label: "3 — fast, lower precision" },
-          { value: "4", label: "4" },
-          { value: "5", label: "5" },
-          { value: "6", label: "6 — async recommended" },
-          { value: "7", label: "7 — async recommended" },
-          { value: "8", label: "8 — async recommended" },
-          { value: "9", label: "9 — async recommended" },
-          { value: "10", label: "10 — async required" },
+          { value: '3', label: '3 — fast, lower precision' },
+          { value: '4', label: '4' },
+          { value: '5', label: '5' },
+          { value: '6', label: '6 — async recommended' },
+          { value: '7', label: '7 — async recommended' },
+          { value: '8', label: '8 — async recommended' },
+          { value: '9', label: '9 — async recommended' },
+          { value: '10', label: '10 — async required' },
         ],
       },
       {
-        name: "n_shots",
-        label: "Number of Shots",
-        type: "select",
-        dataType: "int",
-        default: "",
+        name: 'n_shots',
+        label: 'Number of Shots',
+        type: 'select',
+        dataType: 'int',
+        default: '',
         options: [
-          { value: "", label: "Select shots" },
-          { value: "512", label: "512" },
-          { value: "1024", label: "1024" },
-          { value: "2048", label: "2048" },
-          { value: "4096", label: "4096" },
+          { value: '', label: 'Select shots' },
+          { value: '512', label: '512' },
+          { value: '1024', label: '1024' },
+          { value: '2048', label: '2048' },
+          { value: '4096', label: '4096' },
         ],
       },
       {
-        name: "simulator",
-        label: "Simulator",
-        type: "select",
-        dataType: "string",
-        default: "aer_simulator",
+        name: 'simulator',
+        label: 'Simulator',
+        type: 'select',
+        dataType: 'string',
+        default: 'aer_simulator',
         options: [
-          { value: "aer_simulator", label: "Aer Simulator" },
-          { value: "statevector_simulator", label: "Statevector Simulator" },
+          { value: 'aer_simulator', label: 'Aer Simulator' },
+          { value: 'statevector_simulator', label: 'Statevector Simulator' },
         ],
       },
     ],
   },
-};
-
-// -- Shared helpers so components never hardcode field names or labels -- //
-
-export function getFieldConfig(algorithm, fieldName) {
-  const config = ALGORITHM_CONFIGS[algorithm];
-  if (!config) return null;
-  return config.fields.find((field) => field.name === fieldName) ?? null;
 }
 
-// Returns [{ name, label }] for the fields an algorithm wants shown in
-// summary/comparison views (selection previews, compare table columns, etc).
+export function getAlgorithmConfig(algorithm) {
+  return ALGORITHM_CONFIGS[algorithm] ?? null
+}
+
+export function getAlgorithmLabel(algorithm) {
+  return ALGORITHM_CONFIGS[algorithm]?.label ?? algorithm
+}
+
+export function getFieldConfig(algorithm, fieldName) {
+  const config = getAlgorithmConfig(algorithm)
+
+  if (!config) {
+    return null
+  }
+
+  return config.fields.find((field) => field.name === fieldName) ?? null
+}
+
 export function getSummaryFields(algorithm) {
-  const config = ALGORITHM_CONFIGS[algorithm];
-  if (!config) return [];
+  const config = getAlgorithmConfig(algorithm)
+
+  if (!config) {
+    return []
+  }
 
   return config.summaryFields.map((fieldName) => {
-    const field = getFieldConfig(algorithm, fieldName);
-    return { name: fieldName, label: field?.label ?? fieldName };
-  });
+    const field = getFieldConfig(algorithm, fieldName)
+
+    return {
+      name: fieldName,
+      label: field?.label ?? fieldName,
+    }
+  })
 }
 
 export function getResultLabels(algorithm) {
   return (
     ALGORITHM_CONFIGS[algorithm]?.resultLabels ?? {
-      classical: "Classical MC",
-      quantum: "Quantum MC",
+      classical: 'Classical Result',
+      quantum: 'Quantum Result',
     }
-  );
+  )
 }
 
 export function hasAnalyticalBaseline(algorithm) {
-  return Boolean(ALGORITHM_CONFIGS[algorithm]?.hasAnalyticalBaseline);
+  return Boolean(ALGORITHM_CONFIGS[algorithm]?.hasAnalyticalBaseline)
 }
 
-export function getAlgorithmLabel(algorithm) {
-  return ALGORITHM_CONFIGS[algorithm]?.label ?? algorithm;
+export function getDisplayConfig(algorithm) {
+  return ALGORITHM_CONFIGS[algorithm]?.display ?? createQuantumMonteCarloDisplay({ hasAnalyticalBaseline: false })
 }

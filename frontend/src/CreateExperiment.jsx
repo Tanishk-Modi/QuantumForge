@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import apiClient from './api/client'
-import { ALGORITHM_CONFIGS } from './config/algorithms'
+import { ALGORITHM_CONFIGS, getAlgorithmLabel } from './config/algorithms'
 
 function CreateExperiment({ onSuccess }) {
   const [metadata, setMetadata] = useState({
@@ -121,7 +121,7 @@ function CreateExperiment({ onSuccess }) {
           >
             {Object.keys(ALGORITHM_CONFIGS).map((algorithm) => (
               <option key={algorithm} value={algorithm}>
-                {algorithm}
+                {getAlgorithmLabel(algorithm)}
               </option>
             ))}
           </select>

@@ -10,7 +10,13 @@ import {
   YAxis,
 } from 'recharts'
 import apiClient from '../api/client'
-import { getResultLabels, getSummaryFields, hasAnalyticalBaseline } from '../config/algorithms'
+import {
+  getAlgorithmLabel,
+  getDisplayConfig,
+  getResultLabels,
+  getSummaryFields,
+  hasAnalyticalBaseline,
+} from '../config/algorithms'
 
 function ComparePage() {
   const [experiments, setExperiments] = useState([])
@@ -98,39 +104,37 @@ function ComparePage() {
     setCompareError(null)
   }
 
-  const algorithms = [...new Set(comparedExperiments.map((exp) => exp.algorithm))]
-  const comparisonAlgorithm = algorithms[0] || null
-  const showAnalyticalBaseline = hasAnalyticalBaseline(comparisonAlgorithm)
-  const resultLabels = getResultLabels(comparisonAlgorithm)
-  const summaryFields = getSummaryFields(comparisonAlgorithm)
-
-  const priceChartData = comparedExperiments.map((experiment) => {
-    const row = {
-      name: experiment.name,
-      classical: experiment.classical_mc_result?.price ?? null,
-      quantum: experiment.quantum_mc_result?.price ?? null,
-    }
-
-    if (showAnalyticalBaseline) {
-      row.analytical = experiment.black_scholes_price
-    }
-
-    return row
-  })
-
-  const errorChartData = comparedExperiments.map((experiment) => ({
-    name: experiment.name,
-    classicalError: experiment.error_classical
-      ? experiment.error_classical * 100
-      : 0,
-    quantumError: experiment.error_quantum ? experiment.error_quantum * 100 : 0,
-  }))
-
   function getExperimentSummary(experiment) {
     return getSummaryFields(experiment.algorithm).map(
       (field) => `${field.label}: ${experiment.parameters[field.name] ?? 'N/A'}`
     )
   }
+
+  const algorithms = [...new Set(comparedExperiments.map((exp) => exp.algorithm))]
+  const comparisonAlgorithm = algorithms[0] || null
+  const display = getDisplayConfig(comparisonAlgorithm)
+  const resultLabels = getResultLabels(comparisonAlgorithm)
+  const summaryFields = getSummaryFields(comparisonAlgorithm)
+  const showAnalyticalBaseline = hasAnalyticalBaseline(comparisonAlgorithm)
+  const comparisonHighlight = display.getComparisonHighlight(comparedExperiments)
+  const compareTableColumns = display.getCompareTableColumns(resultLabels)
+  const confidenceIntervalEnabled = Boolean(display.confidenceInterval?.enabled)
+
+  const comparisonChartData = comparedExperiments.map((experiment) => {
+    const row = {
+      name: experiment.name,
+      classical: display.getClassicalValue(experiment),
+      quantum: display.getQuantumValue(experiment),
+    }
+
+    if (showAnalyticalBaseline) {
+      row.analytical = display.getAnalyticalValue(experiment)
+    }
+
+    return row
+  })
+
+  const errorChartData = display.getErrorChartData(comparedExperiments)
 
   return (
     <div className="space-y-8">
@@ -187,7 +191,7 @@ function ComparePage() {
                       </div>
 
                       <p className="mt-1 text-sm text-gray-500">
-                        {experiment.algorithm}
+                        {getAlgorithmLabel(experiment.algorithm)}
                       </p>
 
                       <div className="mt-2 grid gap-2 text-sm text-gray-600 md:grid-cols-4">
@@ -237,35 +241,33 @@ function ComparePage() {
 
             <div className="rounded-lg border bg-white p-5">
               <p className="text-sm text-gray-500">Algorithm</p>
-              <p className="mt-2 text-lg font-semibold">{comparisonAlgorithm}</p>
+              <p className="mt-2 text-lg font-semibold">
+                {getAlgorithmLabel(comparisonAlgorithm)}
+              </p>
             </div>
 
             <div className="rounded-lg border bg-white p-5">
-              <p className="text-sm text-gray-500">Best Quantum Error</p>
+              <p className="text-sm text-gray-500">{comparisonHighlight.label}</p>
               <p className="mt-2 text-3xl font-bold text-green-600">
-                {Math.min(
-                  ...comparedExperiments.map(
-                    (experiment) => (experiment.error_quantum ?? 0) * 100
-                  )
-                ).toFixed(2)}
-                %
+                {comparisonHighlight.value}
               </p>
             </div>
           </section>
 
           <section className="rounded-lg border bg-white p-6">
             <div className="mb-5">
-              <h3 className="text-xl font-semibold">Price Comparison</h3>
+              <h3 className="text-xl font-semibold">{display.comparisonTitle}</h3>
               <p className="text-sm text-gray-500">
-                {showAnalyticalBaseline
-                  ? `Compare the ${resultLabels.analytical} baseline against classical and quantum estimates for each run.`
-                  : `Compare the ${resultLabels.classical} baseline against the ${resultLabels.quantum} estimate for each run.`}
+                {display.getComparisonDescription({
+                  showAnalyticalBaseline,
+                  resultLabels,
+                })}
               </p>
             </div>
 
             <ResponsiveContainer width="100%" height={340}>
               <BarChart
-                data={priceChartData}
+                data={comparisonChartData}
                 margin={{ top: 10, right: 20, left: 0, bottom: 10 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -276,13 +278,15 @@ function ComparePage() {
                   tickLine={false}
                 />
                 <YAxis
-                  tickFormatter={(value) => `$${Number(value).toFixed(2)}`}
+                  tickFormatter={(value) => display.formatValue(Number(value), display.axisDecimals)}
                   tick={{ fontSize: 12, fill: '#6b7280' }}
                   axisLine={{ stroke: '#d1d5db' }}
                   tickLine={false}
                 />
                 <Tooltip
-                  formatter={(value) => `$${Number(value).toFixed(4)}`}
+                  formatter={(value) =>
+                    display.formatValue(Number(value), display.valueDecimals)
+                  }
                   contentStyle={{
                     borderRadius: '8px',
                     border: '1px solid #e5e7eb',
@@ -291,10 +295,22 @@ function ComparePage() {
                 />
                 <Legend />
                 {showAnalyticalBaseline && (
-                  <Bar dataKey="analytical" name={resultLabels.analytical} fill="#6b7280" />
+                  <Bar
+                    dataKey="analytical"
+                    name={resultLabels.analytical}
+                    fill="#6b7280"
+                  />
                 )}
-                <Bar dataKey="classical" name={resultLabels.classical} fill="#16a34a" />
-                <Bar dataKey="quantum" name={resultLabels.quantum} fill="#2563eb" />
+                <Bar
+                  dataKey="classical"
+                  name={resultLabels.classical}
+                  fill="#16a34a"
+                />
+                <Bar
+                  dataKey="quantum"
+                  name={resultLabels.quantum}
+                  fill="#2563eb"
+                />
               </BarChart>
             </ResponsiveContainer>
           </section>
@@ -303,9 +319,10 @@ function ComparePage() {
             <div className="mb-5">
               <h3 className="text-xl font-semibold">Error Comparison</h3>
               <p className="text-sm text-gray-500">
-                {showAnalyticalBaseline
-                  ? `Lower percentages mean the estimate stayed closer to the ${resultLabels.analytical} reference.`
-                  : `Lower percentages mean the estimate stayed closer to the ${resultLabels.classical} baseline.`}
+                {display.getErrorComparisonDescription({
+                  showAnalyticalBaseline,
+                  resultLabels,
+                })}
               </p>
             </div>
 
@@ -322,13 +339,13 @@ function ComparePage() {
                   tickLine={false}
                 />
                 <YAxis
-                  tickFormatter={(value) => `${Number(value).toFixed(1)}%`}
+                  tickFormatter={(value) => display.formatErrorValue(Number(value), 1)}
                   tick={{ fontSize: 12, fill: '#6b7280' }}
                   axisLine={{ stroke: '#d1d5db' }}
                   tickLine={false}
                 />
                 <Tooltip
-                  formatter={(value) => `${Number(value).toFixed(2)}%`}
+                  formatter={(value) => display.formatErrorValue(Number(value), 2)}
                   contentStyle={{
                     borderRadius: '8px',
                     border: '1px solid #e5e7eb',
@@ -369,48 +386,30 @@ function ComparePage() {
                         {field.label}
                       </th>
                     ))}
-                    <th className="px-3 py-3 font-medium">{resultLabels.quantum} Price</th>
-                    <th className="px-3 py-3 font-medium">CI Low</th>
-                    <th className="px-3 py-3 font-medium">CI High</th>
-                    <th className="px-3 py-3 font-medium">Qubits</th>
-                    <th className="px-3 py-3 font-medium">Depth</th>
-                    <th className="px-3 py-3 font-medium">Runtime</th>
+                    {compareTableColumns.map((column) => (
+                      <th key={column.label} className="px-3 py-3 font-medium">
+                        {column.label}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
 
                 <tbody>
-                  {comparedExperiments.map((experiment) => {
-                    const qmc = experiment.quantum_mc_result
-
-                    return (
-                      <tr key={experiment.id} className="border-b last:border-b-0">
-                        <td className="px-3 py-3 font-medium">{experiment.name}</td>
-                        {summaryFields.map((field) => (
-                          <td key={field.name} className="px-3 py-3">
-                            {experiment.parameters[field.name] ?? 'N/A'}
-                          </td>
-                        ))}
-                        <td className="px-3 py-3">
-                          {qmc?.price?.toFixed(4) ?? 'N/A'}
+                  {comparedExperiments.map((experiment) => (
+                    <tr key={experiment.id} className="border-b last:border-b-0">
+                      <td className="px-3 py-3 font-medium">{experiment.name}</td>
+                      {summaryFields.map((field) => (
+                        <td key={field.name} className="px-3 py-3">
+                          {experiment.parameters[field.name] ?? 'N/A'}
                         </td>
-                        <td className="px-3 py-3">
-                          {qmc?.confidence_interval_low?.toFixed(4) ?? 'N/A'}
+                      ))}
+                      {compareTableColumns.map((column) => (
+                        <td key={column.label} className="px-3 py-3">
+                          {column.render(experiment)}
                         </td>
-                        <td className="px-3 py-3">
-                          {qmc?.confidence_interval_high?.toFixed(4) ?? 'N/A'}
-                        </td>
-                        <td className="px-3 py-3">
-                          {qmc?.qubit_count ?? 'N/A'}
-                        </td>
-                        <td className="px-3 py-3">
-                          {qmc?.circuit_depth ?? 'N/A'}
-                        </td>
-                        <td className="px-3 py-3">
-                          {qmc?.runtime_ms ? `${qmc.runtime_ms.toFixed(0)} ms` : 'N/A'}
-                        </td>
-                      </tr>
-                    )
-                  })}
+                      ))}
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

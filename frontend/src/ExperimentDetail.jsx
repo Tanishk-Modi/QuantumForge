@@ -7,17 +7,44 @@ import {
   YAxis,
   Tooltip,
 } from 'recharts'
-import { getResultLabels, hasAnalyticalBaseline } from './config/algorithms'
+import {
+  getDisplayConfig,
+  getResultLabels,
+  hasAnalyticalBaseline,
+} from './config/algorithms'
 
 function ExperimentDetail({ experiment }) {
-  const bs = experiment.black_scholes_price
-  const cmc = experiment.classical_mc_result
-  const qmc = experiment.quantum_mc_result
+  const analyticalResult = experiment.black_scholes_price
+  const classicalResult = experiment.classical_mc_result
+  const quantumResult = experiment.quantum_mc_result
 
+  const display = getDisplayConfig(experiment.algorithm)
   const resultLabels = getResultLabels(experiment.algorithm)
+
   const showAnalyticalBaseline =
-    hasAnalyticalBaseline(experiment.algorithm) && bs !== null && bs !== undefined
-  const hasResults = experiment.status === 'completed' && cmc && qmc
+    hasAnalyticalBaseline(experiment.algorithm) &&
+    analyticalResult !== null &&
+    analyticalResult !== undefined
+
+  const classicalValue = display.getClassicalValue(experiment)
+  const quantumValue = display.getQuantumValue(experiment)
+
+  const hasResults =
+    experiment.status === 'completed' &&
+    classicalResult &&
+    quantumResult &&
+    classicalValue !== null &&
+    classicalValue !== undefined &&
+    quantumValue !== null &&
+    quantumValue !== undefined
+
+  const ciConfig = display.confidenceInterval
+  const hasConfidenceInterval =
+    hasResults &&
+    ciConfig?.enabled &&
+    quantumResult?.[ciConfig.lowKey] !== undefined &&
+    quantumResult?.[ciConfig.highKey] !== undefined &&
+    quantumResult?.[ciConfig.estimateKey] !== undefined
 
   let chartData = []
   let ciLow = 0
@@ -29,31 +56,81 @@ function ExperimentDetail({ experiment }) {
   let intervalWidth = 0
 
   if (hasResults) {
-    ciLow = qmc.confidence_interval_low
-    ciHigh = qmc.confidence_interval_high
-    estimate = qmc.price
+    chartData = showAnalyticalBaseline
+      ? [
+          {
+            name: resultLabels.analytical,
+            value: display.getAnalyticalValue(experiment),
+            fill: '#6b7280',
+          },
+          {
+            name: resultLabels.classical,
+            value: classicalValue,
+            fill: '#16a34a',
+          },
+          {
+            name: resultLabels.quantum,
+            value: quantumValue,
+            fill: '#2563eb',
+          },
+        ]
+      : [
+          {
+            name: resultLabels.classical,
+            value: classicalValue,
+            fill: '#16a34a',
+          },
+          {
+            name: resultLabels.quantum,
+            value: quantumValue,
+            fill: '#2563eb',
+          },
+        ]
+  }
+
+  if (hasConfidenceInterval) {
+    ciLow = quantumResult[ciConfig.lowKey]
+    ciHigh = quantumResult[ciConfig.highKey]
+    estimate = quantumResult[ciConfig.estimateKey]
 
     const padding = (ciHigh - ciLow) * 0.25
     const scaleMin = Math.min(ciLow, estimate) - padding
     const scaleMax = Math.max(ciHigh, estimate) + padding
-    const scaleRange = scaleMax - scaleMin
+    const scaleRange = scaleMax - scaleMin || 1
 
     lowPercent = ((ciLow - scaleMin) / scaleRange) * 100
     highPercent = ((ciHigh - scaleMin) / scaleRange) * 100
     estimatePercent = ((estimate - scaleMin) / scaleRange) * 100
     intervalWidth = highPercent - lowPercent
-
-    chartData = showAnalyticalBaseline
-      ? [
-          { name: resultLabels.analytical, price: bs, fill: '#6b7280' },
-          { name: resultLabels.classical, price: cmc.price, fill: '#16a34a' },
-          { name: resultLabels.quantum, price: qmc.price, fill: '#2563eb' },
-        ]
-      : [
-          { name: resultLabels.classical, price: cmc.price, fill: '#16a34a' },
-          { name: resultLabels.quantum, price: qmc.price, fill: '#2563eb' },
-        ]
   }
+
+  const classicalDetailLines = hasResults
+    ? display.getClassicalDetailLines({
+        experiment,
+        classicalResult,
+        quantumResult,
+        resultLabels,
+        showAnalyticalBaseline,
+      })
+    : []
+
+  const quantumDetailLines = hasResults
+    ? display.getQuantumDetailLines({
+        experiment,
+        classicalResult,
+        quantumResult,
+        resultLabels,
+        showAnalyticalBaseline,
+      })
+    : []
+
+  const classicalErrorText = hasResults
+    ? display.getClassicalErrorText(experiment)
+    : null
+
+  const quantumErrorText = hasResults
+    ? display.getQuantumErrorText(experiment)
+    : null
 
   return (
     <div className="rounded-lg border bg-white p-6">
@@ -79,13 +156,17 @@ function ExperimentDetail({ experiment }) {
 
       {hasResults && (
         <div>
-            <div className={`grid gap-4 ${showAnalyticalBaseline ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+          <div
+            className={`grid gap-4 ${showAnalyticalBaseline ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}
+          >
             {showAnalyticalBaseline && (
               <div className="rounded-lg border p-4">
                 <p className="mb-1 text-xs uppercase tracking-wide text-gray-400">
                   {resultLabels.analytical}
                 </p>
-                <p className="text-2xl font-bold">${bs.toFixed(4)}</p>
+                <p className="text-2xl font-bold">
+                  {display.formatValue(display.getAnalyticalValue(experiment), display.valueDecimals)}
+                </p>
                 <p className="mt-1 text-xs text-gray-400">
                   Analytical ground truth
                 </p>
@@ -96,46 +177,39 @@ function ExperimentDetail({ experiment }) {
               <p className="mb-1 text-xs uppercase tracking-wide text-gray-400">
                 {resultLabels.classical}
               </p>
-              <p className="text-2xl font-bold">${cmc.price.toFixed(4)}</p>
-              <p className="mt-1 text-sm text-gray-500">
-                Error: {(experiment.error_classical * 100).toFixed(2)}%
+              <p className="text-2xl font-bold">
+                {display.formatValue(classicalValue, display.valueDecimals)}
               </p>
-              <p className="mt-1 text-xs text-gray-400">
-                σ = {cmc.std_dev.toFixed(4)} · n = {cmc.n_samples.toLocaleString()}
-              </p>
-              {!showAnalyticalBaseline && (
-                <p className="mt-1 text-xs text-gray-400">
-                  Simulation baseline for path-dependent / multi-asset pricing
-                </p>
+              {classicalErrorText && (
+                <p className="mt-1 text-sm text-gray-500">{classicalErrorText}</p>
               )}
+              {classicalDetailLines.map((line) => (
+                <p key={line} className="mt-1 text-xs text-gray-400">
+                  {line}
+                </p>
+              ))}
             </div>
 
             <div className="rounded-lg border p-4">
               <p className="mb-1 text-xs uppercase tracking-wide text-gray-400">
                 {resultLabels.quantum}
               </p>
-              <p className="text-2xl font-bold">${qmc.price.toFixed(4)}</p>
-              <p className="mt-1 text-sm text-gray-500">
-                Error: {(experiment.error_quantum * 100).toFixed(2)}%
+              <p className="text-2xl font-bold">
+                {display.formatValue(quantumValue, display.valueDecimals)}
               </p>
-              <p className="mt-1 text-xs text-gray-400">
-                CI: [{qmc.confidence_interval_low.toFixed(4)},{' '}
-                {qmc.confidence_interval_high.toFixed(4)}]
-              </p>
-              <p className="text-xs text-gray-400">
-                {qmc.qubit_count}q · depth {qmc.circuit_depth} ·{' '}
-                {qmc.runtime_ms.toFixed(0)}ms
-              </p>
-              {!showAnalyticalBaseline && (
-                <p className="mt-1 text-xs text-gray-400">
-                  Error measured against {resultLabels.classical} baseline
-                </p>
+              {quantumErrorText && (
+                <p className="mt-1 text-sm text-gray-500">{quantumErrorText}</p>
               )}
+              {quantumDetailLines.map((line) => (
+                <p key={line} className="mt-1 text-xs text-gray-400">
+                  {line}
+                </p>
+              ))}
             </div>
           </div>
 
           <div className="mt-8 rounded-lg border p-4">
-            <h3 className="mb-4 text-lg font-semibold">Price Comparison</h3>
+            <h3 className="mb-4 text-lg font-semibold">{display.comparisonTitle}</h3>
 
             <ResponsiveContainer width="100%" height={320}>
               <BarChart
@@ -150,13 +224,16 @@ function ExperimentDetail({ experiment }) {
                   tickLine={false}
                 />
                 <YAxis
-                  tickFormatter={(value) => `$${Number(value).toFixed(2)}`}
+                  tickFormatter={(value) => display.formatValue(Number(value), display.axisDecimals)}
                   tick={{ fontSize: 12, fill: '#6b7280' }}
                   axisLine={{ stroke: '#d1d5db' }}
                   tickLine={false}
                 />
                 <Tooltip
-                  formatter={(value) => [`$${Number(value).toFixed(4)}`, 'Price']}
+                  formatter={(value) => [
+                    display.formatValue(Number(value), display.valueDecimals),
+                    display.comparisonValueLabel,
+                  ]}
                   contentStyle={{
                     borderRadius: '8px',
                     border: '1px solid #e5e7eb',
@@ -164,7 +241,7 @@ function ExperimentDetail({ experiment }) {
                   }}
                 />
                 <Bar
-                  dataKey="price"
+                  dataKey="value"
                   radius={[6, 6, 0, 0]}
                   barSize={64}
                   fill="#2563eb"
@@ -173,54 +250,55 @@ function ExperimentDetail({ experiment }) {
             </ResponsiveContainer>
           </div>
 
-          <div className="mt-8 rounded-lg border p-4">
-            <h3 className="mb-4 text-lg font-semibold">
-              Quantum Confidence Interval
-            </h3>
+          {hasConfidenceInterval && (
+            <div className="mt-8 rounded-lg border p-4">
+              <h3 className="mb-4 text-lg font-semibold">
+                {ciConfig.title}
+              </h3>
 
-            <div className="relative h-14">
-              <div className="absolute top-1/2 left-0 h-2 w-full -translate-y-1/2 rounded-full bg-gray-200" />
+              <div className="relative h-14">
+                <div className="absolute top-1/2 left-0 h-2 w-full -translate-y-1/2 rounded-full bg-gray-200" />
 
-              <div
-                className="absolute top-1/2 h-3 -translate-y-1/2 rounded-full bg-blue-200"
-                style={{
-                  left: `${lowPercent}%`,
-                  width: `${intervalWidth}%`,
-                }}
-              />
+                <div
+                  className="absolute top-1/2 h-3 -translate-y-1/2 rounded-full bg-blue-200"
+                  style={{
+                    left: `${lowPercent}%`,
+                    width: `${intervalWidth}%`,
+                  }}
+                />
 
-              <div
-                className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-600 shadow"
-                style={{ left: `${estimatePercent}%` }}
-              />
+                <div
+                  className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-600 shadow"
+                  style={{ left: `${estimatePercent}%` }}
+                />
 
-              <div
-                className="absolute top-full mt-2 -translate-x-1/2 text-xs text-gray-500"
-                style={{ left: `${lowPercent}%` }}
-              >
-                ${ciLow.toFixed(4)}
+                <div
+                  className="absolute top-full mt-2 -translate-x-1/2 text-xs text-gray-500"
+                  style={{ left: `${lowPercent}%` }}
+                >
+                  {display.formatValue(ciLow, display.valueDecimals)}
+                </div>
+
+                <div
+                  className="absolute top-full mt-2 -translate-x-1/2 text-xs font-medium text-blue-700"
+                  style={{ left: `${estimatePercent}%` }}
+                >
+                  {display.formatValue(estimate, display.valueDecimals)}
+                </div>
+
+                <div
+                  className="absolute top-full mt-2 -translate-x-1/2 text-xs text-gray-500"
+                  style={{ left: `${highPercent}%` }}
+                >
+                  {display.formatValue(ciHigh, display.valueDecimals)}
+                </div>
               </div>
 
-              <div
-                className="absolute top-full mt-2 -translate-x-1/2 text-xs font-medium text-blue-700"
-                style={{ left: `${estimatePercent}%` }}
-              >
-                ${estimate.toFixed(4)}
-              </div>
-
-              <div
-                className="absolute top-full mt-2 -translate-x-1/2 text-xs text-gray-500"
-                style={{ left: `${highPercent}%` }}
-              >
-                ${ciHigh.toFixed(4)}
-              </div>
+              <p className="mt-8 text-sm text-gray-500">
+                {ciConfig.description}
+              </p>
             </div>
-
-            <p className="mt-8 text-sm text-gray-500">
-              The blue band shows the estimated confidence interval, and the dot
-              marks the quantum estimate.
-            </p>
-          </div>
+          )}
         </div>
       )}
     </div>
