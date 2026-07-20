@@ -1,14 +1,15 @@
 import json
-from datetime import datetime
-from typing import Optional, Literal
+from datetime import datetime, timezone
+from typing import Literal, Optional, Union
 
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy.orm import Session
 
-from database import Base, engine, get_db, Experiment
+from database import Base, Experiment, engine, get_db
 from quantum.registry import get_runner
+from tasks import run_experiment_task
 
 
 app = FastAPI()
@@ -30,7 +31,7 @@ app.add_middleware(
 
 # -- Pydantic Schemas -- #
 
-class QMCParameters(BaseModel):
+class ExperimentParameters(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     # execution metadata
@@ -71,10 +72,17 @@ class QMCParameters(BaseModel):
     num_clock_qubits: Optional[int] = None
 
 
+class QueuedExperimentResponse(BaseModel):
+    experiment_id: int
+    task_id: str
+    status: Literal["queued"]
+    message: str
+
+
 class ExperimentCreate(BaseModel):
     name: str
     algorithm: str
-    parameters: dict
+    parameters: ExperimentParameters
 
 
 class ExperimentResponse(BaseModel):
@@ -83,9 +91,13 @@ class ExperimentResponse(BaseModel):
     id: int
     name: str
     algorithm: str
-    parameters: QMCParameters
+    parameters: ExperimentParameters
     status: str
     created_at: datetime
+    task_id: Optional[str] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    error_message: Optional[str] = None
 
     black_scholes_price: Optional[float] = None
     classical_mc_result: Optional[dict] = None
@@ -109,6 +121,13 @@ class ExperimentResponse(BaseModel):
 
 
 # -- Helper Functions -- #
+
+def should_queue_experiment(parameters: ExperimentParameters) -> bool:
+    execution_target = parameters.execution_target
+    num_qubits = parameters.num_uncertainty_qubits or 0
+
+    return execution_target != "local_sync" or num_qubits > 5
+
 
 def parse_compare_ids(ids: str) -> list[int]:
     raw_parts = [part.strip() for part in ids.split(",") if part.strip()]
@@ -171,34 +190,71 @@ def validate_compare_experiments(experiments: list[Experiment], requested_ids: l
 
 # -- Routes -- #
 
-@app.post("/api/experiments", response_model=ExperimentResponse)
-def create_experiment(experiment: ExperimentCreate, db: Session = Depends(get_db)):
+@app.post(
+    "/api/experiments",
+    response_model=Union[ExperimentResponse, QueuedExperimentResponse],
+)
+def create_experiment(
+    experiment: ExperimentCreate,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    params_dict = experiment.parameters.model_dump()
+
     db_experiment = Experiment(
         name=experiment.name,
         algorithm=experiment.algorithm,
-        parameters=json.dumps(experiment.parameters),
+        parameters=json.dumps(params_dict),
+        status="queued",
     )
 
     db.add(db_experiment)
     db.commit()
     db.refresh(db_experiment)
 
+    if should_queue_experiment(experiment.parameters):
+        try:
+            task = run_experiment_task.delay(db_experiment.id)
+            db_experiment.task_id = task.id
+            db.commit()
+
+            response.status_code = status.HTTP_202_ACCEPTED
+            return QueuedExperimentResponse(
+                experiment_id=db_experiment.id,
+                task_id=task.id,
+                status="queued",
+                message="Experiment accepted and queued for background execution.",
+            )
+        except Exception as error:
+            db_experiment.status = "failed"
+            db_experiment.error_message = f"Failed to queue experiment: {error}"
+            db_experiment.finished_at = datetime.now(timezone.utc)
+            db.commit()
+            raise HTTPException(
+                status_code=503,
+                detail="Failed to queue experiment.",
+            ) from error
+
     db_experiment.status = "running"
+    db_experiment.started_at = datetime.now(timezone.utc)
     db.commit()
 
     try:
         runner = get_runner(experiment.algorithm)
-        results = runner(experiment.parameters)
+        results = runner(params_dict)
 
         db_experiment.black_scholes_price = results["black_scholes_price"]
-        db_experiment.classical_mc_result = results["classical_mc_result"]
-        db_experiment.quantum_mc_result = results["quantum_mc_result"]
+        db_experiment.classical_mc_result = json.dumps(results["classical_mc_result"])
+        db_experiment.quantum_mc_result = json.dumps(results["quantum_mc_result"])
         db_experiment.error_classical = results["error_classical"]
         db_experiment.error_quantum = results["error_quantum"]
         db_experiment.status = "completed"
+        db_experiment.finished_at = datetime.now(timezone.utc)
+        db_experiment.error_message = None
     except Exception as error:
-        print(f"Experiment {db_experiment.id} failed: {error}")
         db_experiment.status = "failed"
+        db_experiment.finished_at = datetime.now(timezone.utc)
+        db_experiment.error_message = str(error)
 
     db.commit()
     db.refresh(db_experiment)
