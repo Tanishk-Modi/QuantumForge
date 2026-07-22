@@ -8,6 +8,20 @@ const STATUS_BADGE_STYLES = {
   failed: 'bg-red-100 text-red-700',
 }
 
+function formatBackendDateTime(value) {
+  if (!value) {
+    return 'Unknown time'
+  }
+
+  const normalized =
+    typeof value === 'string' && !/(Z|[+-]\d{2}:\d{2})$/.test(value)
+      ? `${value}Z`
+      : value
+
+  const parsed = new Date(normalized)
+  return Number.isNaN(parsed.getTime()) ? 'Unknown time' : parsed.toLocaleString()
+}
+
 function StatusBadge({ status }) {
   const style = STATUS_BADGE_STYLES[status] ?? 'bg-gray-100 text-gray-700'
 
@@ -60,7 +74,7 @@ function ExperimentList({ experiments, isLoading, error, onDelete }) {
               <span>·</span>
               <StatusBadge status={experiment.status} />
               <span>·</span>
-              <span>{new Date(experiment.created_at).toLocaleString()}</span>
+              <span>{formatBackendDateTime(experiment.created_at)}</span>
             </p>
           </div>
 

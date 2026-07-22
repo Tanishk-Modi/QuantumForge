@@ -54,6 +54,20 @@ function getExperimentWebSocketUrl(experimentId) {
   return `${protocol}//${window.location.host}/ws/experiments/${experimentId}`
 }
 
+function formatBackendDateTime(value) {
+  if (!value) {
+    return 'Unknown time'
+  }
+
+  const normalized =
+    typeof value === 'string' && !/(Z|[+-]\d{2}:\d{2})$/.test(value)
+      ? `${value}Z`
+      : value
+
+  const parsed = new Date(normalized)
+  return Number.isNaN(parsed.getTime()) ? 'Unknown time' : parsed.toLocaleString()
+}
+
 function ExperimentDetailPage() {
   const { id } = useParams()
 
