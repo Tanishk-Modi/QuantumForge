@@ -1,18 +1,23 @@
 from datetime import datetime, timezone
-from typing import Literal, Optional, Union
+from typing import Any, Literal, Optional, Union
+import json
+import os
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
+import redis.asyncio as redis_asyncio
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy.orm import Session
 
-from database import Base, Experiment, engine, get_db, normalize_legacy_experiment_rows
+from database import Base, Experiment, SessionLocal, engine, ensure_experiment_schema, get_db, normalize_legacy_experiment_rows
+from events import publish_experiment_event
 from quantum.registry import get_runner
 from tasks import run_experiment_task
 
 
 app = FastAPI()
 Base.metadata.create_all(bind=engine)
+ensure_experiment_schema()
 normalize_legacy_experiment_rows()
 
 origins = [
@@ -99,6 +104,9 @@ class ExperimentResponse(BaseModel):
     finished_at: Optional[datetime] = None
     error_message: Optional[str] = None
 
+    # persisted event history for mid-run page joins
+    progress_log: list[dict[str, Any]] = []
+
     black_scholes_price: Optional[float] = None
     classical_mc_result: Optional[dict] = None
     quantum_mc_result: Optional[dict] = None
@@ -107,6 +115,16 @@ class ExperimentResponse(BaseModel):
 
 
 # -- Helper Functions -- #
+
+TERMINAL_STATUSES = {"completed", "failed"}
+REDIS_EVENT_URL = os.getenv(
+    "REDIS_EVENT_URL",
+    os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"),
+)
+
+
+def _experiment_event_channel(experiment_id: int) -> str:
+    return f"experiment:{experiment_id}:events"
 
 def should_queue_experiment(parameters: ExperimentParameters) -> bool:
     execution_target = parameters.execution_target
@@ -198,6 +216,12 @@ def create_experiment(
     db.add(db_experiment)
     db.commit()
     db.refresh(db_experiment)
+    publish_experiment_event(
+        db,
+        db_experiment,
+        event_type="status_queued",
+        data={"message": "Experiment accepted and queued."},
+    )
 
     if should_queue_experiment(experiment.parameters):
         try:
@@ -216,7 +240,12 @@ def create_experiment(
             db_experiment.status = "failed"
             db_experiment.error_message = f"Failed to queue experiment: {error}"
             db_experiment.finished_at = datetime.now(timezone.utc)
-            db.commit()
+            publish_experiment_event(
+                db,
+                db_experiment,
+                event_type="status_failed",
+                data={"message": "Failed to queue experiment.", "error": str(error)},
+            )
             raise HTTPException(
                 status_code=503,
                 detail="Failed to queue experiment.",
@@ -224,11 +253,20 @@ def create_experiment(
 
     db_experiment.status = "running"
     db_experiment.started_at = datetime.now(timezone.utc)
-    db.commit()
+    publish_experiment_event(
+        db,
+        db_experiment,
+        event_type="status_running",
+        data={"message": "Experiment execution started."},
+    )
 
     try:
+        params_with_runtime_context = {**stored_params, "experiment_id": db_experiment.id}
+        if ibm_api_token:
+            params_with_runtime_context["ibm_api_token"] = ibm_api_token
+
         runner = get_runner(experiment.algorithm)
-        results = runner(stored_params)
+        results = runner(params_with_runtime_context)
 
         db_experiment.black_scholes_price = results["black_scholes_price"]
         db_experiment.classical_mc_result = results["classical_mc_result"]
@@ -238,12 +276,23 @@ def create_experiment(
         db_experiment.status = "completed"
         db_experiment.finished_at = datetime.now(timezone.utc)
         db_experiment.error_message = None
+        publish_experiment_event(
+            db,
+            db_experiment,
+            event_type="status_completed",
+            data={"message": "Experiment completed successfully."},
+        )
     except Exception as error:
         db_experiment.status = "failed"
         db_experiment.finished_at = datetime.now(timezone.utc)
         db_experiment.error_message = str(error)
+        publish_experiment_event(
+            db,
+            db_experiment,
+            event_type="status_failed",
+            data={"message": "Experiment failed.", "error": str(error)},
+        )
 
-    db.commit()
     db.refresh(db_experiment)
     return db_experiment
 
@@ -303,3 +352,78 @@ def delete_experiment(experiment_id: int, db: Session = Depends(get_db)):
     db.commit()
 
     return {"ok": True}
+
+@app.websocket("/ws/experiments/{experiment_id}")
+async def experiment_events_ws(websocket: WebSocket, experiment_id: int):
+    await websocket.accept()
+
+    db = SessionLocal()
+    try:
+        experiment_exists = (
+            db.query(Experiment.id)
+            .filter(Experiment.id == experiment_id)
+            .first()
+            is not None
+        )
+    finally:
+        db.close()
+
+    if not experiment_exists:
+        await websocket.send_json(
+            {
+                "event_type": "error",
+                "data": {"message": "Experiment not found"},
+                "experiment_id": experiment_id,
+            }
+        )
+        await websocket.close(code=1008)
+        return
+
+    channel = _experiment_event_channel(experiment_id)
+    redis_client = redis_asyncio.Redis.from_url(REDIS_EVENT_URL, decode_responses=True)
+    pubsub = redis_client.pubsub()
+
+    try:
+        await pubsub.subscribe(channel)
+
+        while True:
+            message = await pubsub.get_message(
+                ignore_subscribe_messages=True,
+                timeout=1.0,
+            )
+
+            if not message or message.get("type") != "message":
+                continue
+
+            payload = message.get("data")
+            if not isinstance(payload, str):
+                payload = json.dumps(payload)
+
+            await websocket.send_text(payload)
+
+            try:
+                event = json.loads(payload)
+                if event.get("status") in TERMINAL_STATUSES:
+                    break
+            except json.JSONDecodeError:
+                pass
+
+    except WebSocketDisconnect:
+        return
+    finally:
+        try:
+            await pubsub.unsubscribe(channel)
+        except Exception:
+            pass
+        try:
+            await pubsub.close()
+        except Exception:
+            pass
+        try:
+            await redis_client.close()
+        except Exception:
+            pass
+        try:
+            await websocket.close()
+        except Exception:
+            pass

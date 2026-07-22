@@ -23,6 +23,60 @@ const STATUS_BANNER_MESSAGES = {
   running: 'This experiment is currently running in the background.',
 }
 
+const EVENT_LABELS = {
+  status_running: 'Experiment started',
+  status_completed: 'Experiment completed',
+  status_failed: 'Experiment failed',
+  ibm_backend_selected: 'IBM backend selected',
+  ibm_round_submitted: 'IAE round submitted',
+  ibm_round_completed: 'IAE round completed',
+}
+
+function formatEventTimestamp(timestamp) {
+  if (!timestamp) {
+    return 'Unknown time'
+  }
+
+  const parsed = new Date(timestamp)
+  return Number.isNaN(parsed.getTime()) ? 'Unknown time' : parsed.toLocaleString()
+}
+
+function formatEventDescription(event) {
+  if (!event || typeof event !== 'object') {
+    return 'No details available'
+  }
+
+  const data = event.data || {}
+
+  if (event.event_type === 'ibm_backend_selected') {
+    const backend = data.backend ? `Backend: ${data.backend}` : 'Backend selected'
+    const shots = Number.isInteger(data.shots) ? `Shots: ${data.shots}` : null
+    return shots ? `${backend} · ${shots}` : backend
+  }
+
+  if (event.event_type === 'ibm_round_submitted') {
+    const round = Number.isInteger(data.round) ? `Round ${data.round}` : 'Round submitted'
+    const backend = data.backend ? data.backend : null
+    const shots = Number.isInteger(data.shots) ? `${data.shots} shots` : null
+    return [round, backend, shots].filter(Boolean).join(' · ')
+  }
+
+  if (event.event_type === 'ibm_round_completed') {
+    const round = Number.isInteger(data.round) ? `Round ${data.round}` : 'Round completed'
+    const durationMs =
+      typeof data.duration_ms === 'number' && Number.isFinite(data.duration_ms)
+        ? `${data.duration_ms.toFixed(0)}ms`
+        : null
+    return [round, durationMs].filter(Boolean).join(' · ')
+  }
+
+  if (typeof data.message === 'string' && data.message.length > 0) {
+    return data.message
+  }
+
+  return 'Event received'
+}
+
 function ExperimentDetail({ experiment }) {
   const analyticalResult = experiment.black_scholes_price
   const classicalResult = experiment.classical_mc_result
@@ -143,6 +197,13 @@ function ExperimentDetail({ experiment }) {
     : null
 
   const isActiveStatus = experiment.status === 'queued' || experiment.status === 'running'
+  const isIbmQpuRun = experiment.parameters?.execution_target === 'ibm_qpu'
+  const progressLog = Array.isArray(experiment.progress_log) ? experiment.progress_log : []
+  const liveEvents = [...progressLog].sort((a, b) => {
+    const timeA = a?.timestamp ? Date.parse(a.timestamp) : 0
+    const timeB = b?.timestamp ? Date.parse(b.timestamp) : 0
+    return timeA - timeB
+  })
 
   return (
     <div className="rounded-lg border bg-white p-6">
@@ -162,6 +223,37 @@ function ExperimentDetail({ experiment }) {
         >
           <span className="h-2 w-2 animate-pulse rounded-full bg-current" />
           <span>{STATUS_BANNER_MESSAGES[experiment.status]}</span>
+        </div>
+      )}
+
+      {isIbmQpuRun && (
+        <div className="mb-6 rounded-lg border border-blue-100 bg-blue-50/70 p-4">
+          <h3 className="text-sm font-semibold text-blue-900">Live Execution Log</h3>
+          <p className="mt-1 text-xs text-blue-800">
+            Persisted history from REST plus live WebSocket events from IBM execution.
+          </p>
+
+          {liveEvents.length === 0 ? (
+            <p className="mt-3 text-sm text-blue-900/80">No live events yet.</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {liveEvents.map((event, index) => {
+                const title = EVENT_LABELS[event?.event_type] || event?.event_type || 'Unknown event'
+                const eventKey = [event?.timestamp ?? index, event?.event_type ?? 'unknown', index].join('|')
+
+                return (
+                  <div
+                    key={eventKey}
+                    className="rounded-md border border-blue-100 bg-white px-3 py-2"
+                  >
+                    <p className="text-xs font-medium text-blue-900">{title}</p>
+                    <p className="mt-0.5 text-xs text-blue-800">{formatEventDescription(event)}</p>
+                    <p className="mt-1 text-[11px] text-blue-700/80">{formatEventTimestamp(event?.timestamp)}</p>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 

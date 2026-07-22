@@ -33,6 +33,9 @@ class Experiment(Base):
     finished_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # durable event history for websocket catch-up
+    progress_log: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+
     # experiment result fields
     black_scholes_price: Mapped[Optional[float]] = mapped_column(nullable=True)
     classical_mc_result: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
@@ -79,7 +82,31 @@ def normalize_legacy_experiment_rows() -> None:
                 except json.JSONDecodeError:
                     pass
 
+            # normalize historical rows to always expose a list
+            if experiment.progress_log is None:
+                experiment.progress_log = []
+                did_change = True
+            elif isinstance(experiment.progress_log, str):
+                try:
+                    parsed = json.loads(experiment.progress_log)
+                    experiment.progress_log = parsed if isinstance(parsed, list) else []
+                    did_change = True
+                except json.JSONDecodeError:
+                    experiment.progress_log = []
+                    did_change = True
+
         if did_change:
             db.commit()
     finally:
         db.close()
+
+
+def ensure_experiment_schema() -> None:
+    """Apply lightweight SQLite schema patches needed by current ORM models."""
+    with engine.begin() as connection:
+        table_info_rows = connection.exec_driver_sql("PRAGMA table_info(experiments)").fetchall()
+        existing_columns = {row[1] for row in table_info_rows}
+
+        if "progress_log" not in existing_columns:
+            connection.exec_driver_sql("ALTER TABLE experiments ADD COLUMN progress_log JSON")
+            connection.exec_driver_sql("UPDATE experiments SET progress_log = '[]' WHERE progress_log IS NULL")

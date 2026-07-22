@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 
 from celery import Celery
 
-from database import SessionLocal, Experiment
+from database import Experiment, SessionLocal
+from events import publish_experiment_event
 from quantum.registry import get_runner
 
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
@@ -43,9 +44,15 @@ def run_experiment_task(experiment_id: int, ibm_api_token: str | None = None):
         experiment.status = "running"
         experiment.started_at = datetime.now(timezone.utc)
         experiment.error_message = None
-        db.commit()
+        publish_experiment_event(
+            db,
+            experiment,
+            event_type="status_running",
+            data={"message": "Experiment execution started."},
+        )
 
         params = dict(experiment.parameters)
+        params["experiment_id"] = experiment.id
         if ibm_api_token:
             params["ibm_api_token"] = ibm_api_token
 
@@ -60,7 +67,12 @@ def run_experiment_task(experiment_id: int, ibm_api_token: str | None = None):
         experiment.status = "completed"
         experiment.finished_at = datetime.now(timezone.utc)
         experiment.error_message = None
-        db.commit()
+        publish_experiment_event(
+            db,
+            experiment,
+            event_type="status_completed",
+            data={"message": "Experiment completed successfully."},
+        )
 
         return {
             "experiment_id": experiment_id,
@@ -78,7 +90,12 @@ def run_experiment_task(experiment_id: int, ibm_api_token: str | None = None):
             experiment.status = "failed"
             experiment.finished_at = datetime.now(timezone.utc)
             experiment.error_message = str(error)
-            db.commit()
+            publish_experiment_event(
+                db,
+                experiment,
+                event_type="status_failed",
+                data={"message": "Experiment failed.", "error": str(error)},
+            )
 
         raise
 
