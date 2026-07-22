@@ -417,6 +417,7 @@ export const ALGORITHM_CONFIGS = {
         placeholder: 'e.g. 0.05',
         step: '0.01',
         min: '0',
+        helperText: 'Enter as a decimal annual rate, for example 0.05 for 5%.',
         default: '0.05',
       },
       {
@@ -427,6 +428,7 @@ export const ALGORITHM_CONFIGS = {
         placeholder: 'e.g. 1.0',
         step: '0.25',
         min: '0',
+        helperText: 'Use years, so 6 months should be entered as 0.5.',
         default: '1.0',
       },
       {
@@ -452,6 +454,7 @@ export const ALGORITHM_CONFIGS = {
         label: 'Number of Shots',
         type: 'select',
         dataType: 'int',
+        helperText: 'More shots usually reduce sampling noise but increase runtime.',
         default: '',
         options: [
           { value: '', label: 'Select shots' },
@@ -466,6 +469,7 @@ export const ALGORITHM_CONFIGS = {
         label: 'Simulator',
         type: 'select',
         dataType: 'string',
+        helperText: 'Use Aer for shot-based sampling and Statevector for ideal noiseless simulation.',
         default: 'aer_simulator',
         options: [
           { value: 'aer_simulator', label: 'Aer Simulator' },
@@ -540,6 +544,7 @@ export const ALGORITHM_CONFIGS = {
         step: '0.01',
         min: '0',
         max: '1',
+        helperText: 'Set portfolio mix as decimals, and keep both weights summing close to 1.0.',
         default: '0.5',
       },
       {
@@ -551,6 +556,7 @@ export const ALGORITHM_CONFIGS = {
         step: '0.01',
         min: '0',
         max: '1',
+        helperText: 'Set portfolio mix as decimals, and keep both weights summing close to 1.0.',
         default: '0.5',
       },
       {
@@ -569,6 +575,7 @@ export const ALGORITHM_CONFIGS = {
         placeholder: 'e.g. 0.05',
         step: '0.01',
         min: '0',
+        helperText: 'Enter as a decimal annual rate, for example 0.05 for 5%.',
         default: '0.05',
       },
       {
@@ -579,6 +586,7 @@ export const ALGORITHM_CONFIGS = {
         placeholder: 'e.g. 1.0',
         step: '0.25',
         min: '0',
+        helperText: 'Use years, so 6 months should be entered as 0.5.',
         default: '1.0',
       },
       {
@@ -604,6 +612,7 @@ export const ALGORITHM_CONFIGS = {
         label: 'Number of Shots',
         type: 'select',
         dataType: 'int',
+        helperText: 'More shots usually reduce sampling noise but increase runtime.',
         default: '',
         options: [
           { value: '', label: 'Select shots' },
@@ -618,6 +627,7 @@ export const ALGORITHM_CONFIGS = {
         label: 'Simulator',
         type: 'select',
         dataType: 'string',
+        helperText: 'Use Aer for shot-based sampling and Statevector for ideal noiseless simulation.',
         default: 'aer_simulator',
         options: [
           { value: 'aer_simulator', label: 'Aer Simulator' },
@@ -679,6 +689,7 @@ export const ALGORITHM_CONFIGS = {
         placeholder: 'e.g. 0.05',
         step: '0.01',
         min: '0',
+        helperText: 'Enter as a decimal annual rate, for example 0.05 for 5%.',
         default: '0.05',
       },
       {
@@ -689,6 +700,7 @@ export const ALGORITHM_CONFIGS = {
         placeholder: 'e.g. 1.0',
         step: '0.25',
         min: '0',
+        helperText: 'Use years, so 6 months should be entered as 0.5.',
         default: '1.0',
       },
       {
@@ -700,6 +712,7 @@ export const ALGORITHM_CONFIGS = {
         step: '1',
         min: '2',
         max: '20',
+        helperText: 'This is the number of averaging observation points over the option life.',
         default: '12',
       },
       {
@@ -725,6 +738,7 @@ export const ALGORITHM_CONFIGS = {
         label: 'Number of Shots',
         type: 'select',
         dataType: 'int',
+        helperText: 'More shots usually reduce sampling noise but increase runtime.',
         default: '',
         options: [
           { value: '', label: 'Select shots' },
@@ -739,6 +753,7 @@ export const ALGORITHM_CONFIGS = {
         label: 'Simulator',
         type: 'select',
         dataType: 'string',
+        helperText: 'Use Aer for shot-based sampling and Statevector for ideal noiseless simulation.',
         default: 'aer_simulator',
         options: [
           { value: 'aer_simulator', label: 'Aer Simulator' },
@@ -787,6 +802,7 @@ export const ALGORITHM_CONFIGS = {
         placeholder: 'e.g. 5',
         step: '0.5',
         min: '1',
+        helperText: 'Larger condition numbers generally make the linear system harder to solve.',
         default: '5',
       },
       {
@@ -798,6 +814,7 @@ export const ALGORITHM_CONFIGS = {
         step: '0.01',
         min: '0.01',
         max: '1',
+        helperText: 'Use smaller values for sparser matrices and larger values for denser ones.',
         default: '0.1',
       },
       {
@@ -808,6 +825,7 @@ export const ALGORITHM_CONFIGS = {
         placeholder: 'e.g. 42',
         step: '1',
         min: '0',
+        helperText: 'Keep the same seed to reproduce the exact same generated system.',
         default: '42',
       },
       {
@@ -818,6 +836,7 @@ export const ALGORITHM_CONFIGS = {
         placeholder: 'e.g. 1.0',
         step: '0.1',
         min: '0.1',
+        helperText: 'This controls phase evolution in HHL and can affect both error and depth.',
         default: '1.0',
       },
       {
@@ -825,6 +844,7 @@ export const ALGORITHM_CONFIGS = {
         label: 'Clock Qubits',
         type: 'select',
         dataType: 'int',
+        helperText: 'More clock qubits improve phase resolution but increase circuit size.',
         default: '3',
         options: [
           { value: '2', label: '2' },
@@ -841,6 +861,7 @@ export const ALGORITHM_CONFIGS = {
         placeholder: 'e.g. 0.05',
         step: '0.01',
         min: '0.001',
+        helperText: 'Smaller epsilon asks for tighter precision and usually costs more runtime.',
         default: '0.05',
       },
       {
@@ -848,6 +869,7 @@ export const ALGORITHM_CONFIGS = {
         label: 'Number of Shots',
         type: 'select',
         dataType: 'int',
+        helperText: 'More shots usually reduce sampling noise but increase runtime.',
         default: '1024',
         options: [
           { value: '512', label: '512' },
@@ -861,6 +883,7 @@ export const ALGORITHM_CONFIGS = {
         label: 'Simulator',
         type: 'select',
         dataType: 'string',
+        helperText: 'Use Aer for shot-based sampling and Statevector for ideal noiseless simulation.',
         default: 'aer_simulator',
         options: [
           { value: 'aer_simulator', label: 'Aer Simulator' },
