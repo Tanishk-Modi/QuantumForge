@@ -24,6 +24,9 @@ origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://quantum-forge.vercel.app",
+    "https://quantum-forge-blue.vercel.app",
+    "https://quantum-forge-git-main-tanishk-modis-projects.vercel.app",
+    "https://quantum-forge-4ncdzp634-tanishk-modis-projects.vercel.app",
 ]
 
 app.add_middleware(
