@@ -4,13 +4,16 @@ import json
 import os
 
 import redis.asyncio as redis_asyncio
-from fastapi import Depends, FastAPI, HTTPException, Query, Response, WebSocket, WebSocketDisconnect, status
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Response, UploadFile, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy.orm import Session
 
 from database import Base, Experiment, SessionLocal, engine, ensure_experiment_schema, get_db, normalize_legacy_experiment_rows
 from events import publish_experiment_event
+from mesh_api import get_mesh_metadata, get_preset_list, save_uploaded_mesh
+from quantum.hhl_cfd.mesh.loader import estimate_system_size
+from quantum.params_utils import normalize_runner_params
 from quantum.registry import get_runner
 from tasks import run_experiment_task
 
@@ -79,6 +82,16 @@ class ExperimentParameters(BaseModel):
     target_precision: Optional[float] = None
     hamiltonian_time: Optional[float] = None
     num_clock_qubits: Optional[int] = None
+    time_parameter: Optional[float] = None
+
+    mesh_source: Optional[Literal["preset", "upload"]] = "preset"
+    mesh_preset: Optional[str] = "lid_cavity"
+    mesh_id: Optional[str] = None
+    reynolds: Optional[float] = 100.0
+    density: Optional[float] = 1.0
+    viscosity: Optional[float] = None
+    lid_velocity: Optional[float] = 1.0
+    time_step: Optional[float] = 0.0
 
 
 class QueuedExperimentResponse(BaseModel):
@@ -130,11 +143,17 @@ REDIS_EVENT_URL = os.getenv(
 def _experiment_event_channel(experiment_id: int) -> str:
     return f"experiment:{experiment_id}:events"
 
-def should_queue_experiment(parameters: ExperimentParameters) -> bool:
-    execution_target = parameters.execution_target
-    num_qubits = parameters.num_uncertainty_qubits or 0
+def should_queue_experiment(parameters: ExperimentParameters, algorithm: str) -> bool:
+    if parameters.execution_target != "local_sync":
+        return True
 
-    return execution_target != "local_sync" or num_qubits > 5
+    if algorithm == "HHL_CFD":
+        params_dict = parameters.model_dump()
+        n = parameters.system_size_n or estimate_system_size(params_dict)
+        return n > 24
+
+    num_qubits = parameters.num_uncertainty_qubits or 0
+    return num_qubits > 5
 
 
 def parse_compare_ids(ids: str) -> list[int]:
@@ -198,6 +217,31 @@ def validate_compare_experiments(experiments: list[Experiment], requested_ids: l
 
 # -- Routes -- #
 
+@app.get("/")
+def root():
+    return {
+        "name": "QForge API",
+        "status": "ok",
+        "docs": "/docs",
+        "frontend": "http://localhost:5173",
+    }
+
+
+@app.get("/api/meshes/presets")
+def list_mesh_presets():
+    return get_preset_list()
+
+
+@app.post("/api/meshes")
+async def upload_mesh(file: UploadFile = File(...)):
+    return await save_uploaded_mesh(file)
+
+
+@app.get("/api/meshes/{mesh_id}")
+def get_mesh(mesh_id: str, preview: bool = Query(False)):
+    return get_mesh_metadata(mesh_id, preview=preview)
+
+
 @app.post(
     "/api/experiments",
     response_model=Union[ExperimentResponse, QueuedExperimentResponse],
@@ -227,7 +271,7 @@ def create_experiment(
         data={"message": "Experiment accepted and queued."},
     )
 
-    if should_queue_experiment(experiment.parameters):
+    if should_queue_experiment(experiment.parameters, experiment.algorithm):
         try:
             task = run_experiment_task.delay(db_experiment.id, ibm_api_token)
             db_experiment.task_id = task.id
@@ -265,7 +309,10 @@ def create_experiment(
     )
 
     try:
-        params_with_runtime_context = {**stored_params, "experiment_id": db_experiment.id}
+        params_with_runtime_context = normalize_runner_params(
+            experiment.algorithm,
+            {**stored_params, "experiment_id": db_experiment.id},
+        )
         if ibm_api_token:
             params_with_runtime_context["ibm_api_token"] = ibm_api_token
 

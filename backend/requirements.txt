@@ -21,7 +21,10 @@ docplex==2.32.264
 fastapi==0.138.2
 fastdtw==0.3.4
 fonttools==4.63.0
+python-multipart==0.0.20
 h11==0.16.0
+h5py==3.13.0
+pyCGNS==6.3.5
 ibm-cloud-sdk-core==3.26.0
 ibm-platform-services==0.76.0
 ibm-quantum-schemas==0.9.20260612

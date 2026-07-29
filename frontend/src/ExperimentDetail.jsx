@@ -7,6 +7,7 @@ import {
   YAxis,
   Tooltip,
 } from 'recharts'
+import FlowFieldViewer from './components/FlowFieldViewer'
 import {
   getDisplayConfig,
   getResultLabels,
@@ -28,8 +29,10 @@ const EVENT_LABELS = {
   status_completed: 'Experiment completed',
   status_failed: 'Experiment failed',
   ibm_backend_selected: 'IBM backend selected',
-  ibm_round_submitted: 'IAE round submitted',
-  ibm_round_completed: 'IAE round completed',
+  ibm_round_submitted: 'HHL round submitted',
+  ibm_round_completed: 'HHL round completed',
+  fvm_assembled: 'FVM system assembled',
+  hermitian_embedded: 'Hermitian embedding applied',
 }
 
 function formatEventTimestamp(timestamp) {
@@ -198,6 +201,8 @@ function ExperimentDetail({ experiment }) {
 
   const isActiveStatus = experiment.status === 'queued' || experiment.status === 'running'
   const isIbmQpuRun = experiment.parameters?.execution_target === 'ibm_qpu'
+  const isFlowSolver = experiment.algorithm === 'HHL_CFD'
+  const showLiveLog = isIbmQpuRun || isFlowSolver
   const progressLog = Array.isArray(experiment.progress_log) ? experiment.progress_log : []
   const liveEvents = [...progressLog].sort((a, b) => {
     const timeA = a?.timestamp ? Date.parse(a.timestamp) : 0
@@ -226,11 +231,11 @@ function ExperimentDetail({ experiment }) {
         </div>
       )}
 
-      {isIbmQpuRun && (
+      {showLiveLog && (
         <div className="mb-6 rounded-lg border border-blue-100 bg-blue-50/70 p-4">
           <h3 className="text-sm font-semibold text-blue-900">Live Execution Log</h3>
           <p className="mt-1 text-xs text-blue-800">
-            Persisted history from REST plus live WebSocket events from IBM execution.
+            Persisted history from REST plus live WebSocket events during execution.
           </p>
 
           {liveEvents.length === 0 ? (
@@ -415,6 +420,13 @@ function ExperimentDetail({ experiment }) {
                 {ciConfig.description}
               </p>
             </div>
+          )}
+
+          {isFlowSolver && classicalResult?.fields && quantumResult?.fields && (
+            <FlowFieldViewer
+              classicalResult={classicalResult}
+              quantumResult={quantumResult}
+            />
           )}
         </div>
       )}

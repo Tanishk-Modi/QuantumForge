@@ -370,6 +370,39 @@ function createLinearSolverDisplay() {
   }
 }
 
+function createFlowSolverDisplay() {
+  const base = createLinearSolverDisplay()
+
+  return {
+    ...base,
+    comparisonTitle: 'Solver Runtime Comparison',
+    getComparisonDescription() {
+      return 'Compare classical FVM direct-solve runtime against quantum HHL runtime.'
+    },
+    getQuantumDetailLines({ quantumResult }) {
+      const lines = base.getQuantumDetailLines({ quantumResult })
+      if (quantumResult?.fields?.velocity_magnitude?.length) {
+        const maxVel = Math.max(...quantumResult.fields.velocity_magnitude)
+        lines.unshift(`Max |u|: ${maxVel.toFixed(4)}`)
+      }
+      return lines
+    },
+    getCompareTableColumns(resultLabels) {
+      return [
+        ...base.getCompareTableColumns(resultLabels),
+        {
+          label: 'Max Velocity',
+          render: (experiment) => {
+            const magnitudes = experiment.quantum_mc_result?.fields?.velocity_magnitude
+            if (!Array.isArray(magnitudes) || magnitudes.length === 0) return 'N/A'
+            return Math.max(...magnitudes).toFixed(4)
+          },
+        },
+      ]
+    },
+  }
+}
+
 export const ALGORITHM_CONFIGS = {
   QMC_European: {
     label: 'European Option (QMC)',
@@ -764,118 +797,134 @@ export const ALGORITHM_CONFIGS = {
   },
 
     HHL_CFD: {
-    label: 'HHL Linear Solver (CFD)',
+    label: 'Navier-Stokes FVM via HHL',
     hasAnalyticalBaseline: false,
     resultLabels: {
-      classical: 'Classical Direct Solver',
+      classical: 'Classical FVM Solver',
       quantum: 'Quantum HHL',
     },
     summaryFields: [
-      'system_size_n',
-      'condition_number',
-      'sparsity',
-      'epsilon_target',
-      'n_shots',
+      'mesh_preset',
+      'reynolds',
+      'density',
+      'viscosity',
+      'time_step',
+      'num_clock_qubits',
       'simulator',
     ],
-    display: createLinearSolverDisplay(),
+    display: createFlowSolverDisplay(),
     fields: [
       {
-        name: 'system_size_n',
-        label: 'Linear System Size N',
+        name: 'mesh_source',
+        label: 'Mesh Source',
         type: 'select',
-        dataType: 'int',
-        default: '8',
-        helperText: 'Start small for simulators. HHL simulation cost grows quickly.',
+        dataType: 'string',
+        default: 'preset',
         options: [
-          { value: '4', label: '4' },
-          { value: '8', label: '8' },
-          { value: '16', label: '16' },
-          { value: '32', label: '32' },
+          { value: 'preset', label: 'Built-in Preset' },
+          { value: 'upload', label: 'Upload CGNS File' },
         ],
       },
       {
-        name: 'condition_number',
-        label: 'Condition Number (kappa)',
+        name: 'mesh_preset',
+        label: 'Preset Mesh',
+        type: 'preset_select',
+        dataType: 'string',
+        default: 'lid_cavity',
+        showWhen: { field: 'mesh_source', value: 'preset' },
+        options: [
+          { value: 'lid_cavity', label: 'Lid-Driven Cavity (2×2)' },
+          { value: 'channel', label: 'Channel Flow (3×2)' },
+        ],
+      },
+      {
+        name: 'mesh_file',
+        label: 'CGNS Mesh File',
+        type: 'file',
+        dataType: 'string',
+        accept: '.cgns',
+        showWhen: { field: 'mesh_source', value: 'upload' },
+        helperText: 'Upload a 2D quad-dominant CGNS mesh file.',
+      },
+      {
+        name: 'reynolds',
+        label: 'Reynolds Number',
         type: 'number',
         dataType: 'float',
-        placeholder: 'e.g. 5',
-        step: '0.5',
+        default: '100',
+        step: '10',
         min: '1',
-        helperText: 'Larger condition numbers generally make the linear system harder to solve.',
-        default: '5',
+        helperText: 'Used to derive viscosity when not set explicitly (Re = rho U L / mu).',
       },
       {
-        name: 'sparsity',
-        label: 'Matrix Sparsity (0 – 1)',
+        name: 'density',
+        label: 'Density (rho)',
         type: 'number',
         dataType: 'float',
-        placeholder: 'e.g. 0.1',
-        step: '0.01',
+        default: '1.0',
+        step: '0.1',
         min: '0.01',
-        max: '1',
-        helperText: 'Use smaller values for sparser matrices and larger values for denser ones.',
-        default: '0.1',
       },
       {
-        name: 'rhs_seed',
-        label: 'RHS / Matrix Seed',
+        name: 'viscosity',
+        label: 'Viscosity (mu)',
         type: 'number',
-        dataType: 'int',
-        placeholder: 'e.g. 42',
-        step: '1',
+        dataType: 'float',
+        placeholder: 'auto from Re',
+        step: '0.001',
+        min: '0.0001',
+        helperText: 'Leave blank to compute from Reynolds number.',
+      },
+      {
+        name: 'lid_velocity',
+        label: 'Lid / Inlet Velocity',
+        type: 'number',
+        dataType: 'float',
+        default: '1.0',
+        step: '0.1',
+      },
+      {
+        name: 'time_step',
+        label: 'Implicit Time Step (0 = steady)',
+        type: 'number',
+        dataType: 'float',
+        default: '0',
+        step: '0.01',
         min: '0',
-        helperText: 'Keep the same seed to reproduce the exact same generated system.',
-        default: '42',
+        helperText: 'When > 0, assembles (M/dt + A)x = b for one implicit step.',
       },
       {
         name: 'time_parameter',
-        label: 'Evolution Time (t)',
+        label: 'HHL Evolution Time (t)',
         type: 'number',
         dataType: 'float',
-        placeholder: 'e.g. 1.0',
+        default: '1.0',
         step: '0.1',
         min: '0.1',
-        helperText: 'This controls phase evolution in HHL and can affect both error and depth.',
-        default: '1.0',
+        helperText: 'Controls phase evolution in HHL; affects error and circuit depth.',
       },
       {
         name: 'num_clock_qubits',
         label: 'Clock Qubits',
         type: 'select',
         dataType: 'int',
-        helperText: 'More clock qubits improve phase resolution but increase circuit size.',
         default: '3',
         options: [
           { value: '2', label: '2' },
           { value: '3', label: '3' },
           { value: '4', label: '4' },
-          { value: '5', label: '5' },
         ],
-      },
-      {
-        name: 'epsilon_target',
-        label: 'Target Precision (epsilon)',
-        type: 'number',
-        dataType: 'float',
-        placeholder: 'e.g. 0.05',
-        step: '0.01',
-        min: '0.001',
-        helperText: 'Smaller epsilon asks for tighter precision and usually costs more runtime.',
-        default: '0.05',
       },
       {
         name: 'n_shots',
         label: 'Number of Shots',
         type: 'select',
         dataType: 'int',
-        helperText: 'More shots usually reduce sampling noise but increase runtime.',
         default: '1024',
         options: [
           { value: '512', label: '512' },
           { value: '1024', label: '1024' },
           { value: '2048', label: '2048' },
-          { value: '4096', label: '4096' },
         ],
       },
       {
@@ -883,8 +932,8 @@ export const ALGORITHM_CONFIGS = {
         label: 'Simulator',
         type: 'select',
         dataType: 'string',
-        helperText: 'Use Aer for shot-based sampling and Statevector for ideal noiseless simulation.',
-        default: 'aer_simulator',
+        default: 'statevector_simulator',
+        helperText: 'Statevector recommended for HHL. IBM QPU runs are experimental (n <= 16).',
         options: [
           { value: 'aer_simulator', label: 'Aer Simulator' },
           { value: 'statevector_simulator', label: 'Statevector Simulator' },

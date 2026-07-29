@@ -5,6 +5,7 @@ from celery import Celery
 
 from database import Experiment, SessionLocal
 from events import publish_experiment_event
+from quantum.params_utils import normalize_runner_params
 from quantum.registry import get_runner
 
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
@@ -51,8 +52,10 @@ def run_experiment_task(experiment_id: int, ibm_api_token: str | None = None):
             data={"message": "Experiment execution started."},
         )
 
-        params = dict(experiment.parameters)
-        params["experiment_id"] = experiment.id
+        params = normalize_runner_params(
+            experiment.algorithm,
+            {**dict(experiment.parameters), "experiment_id": experiment.id},
+        )
         if ibm_api_token:
             params["ibm_api_token"] = ibm_api_token
 
